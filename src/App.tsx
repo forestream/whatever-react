@@ -3,9 +3,9 @@ import React from "./react";
 
 export default function App() {
 	return (
-		<>
-			<h1>Hello World</h1>
-			<Parent aria-label="parent" />
-		</>
+		<Parent aria-label="parent">
+			<p>p tag</p>
+			Wrapped by Parent
+		</Parent>
 	);
 }

@@ -1,20 +1,28 @@
 function createElement(type, props, ...children) {
-  const element = typeof type === "function" ? {
-    name: type.name,
-    props,
-    children: type({
+  return typeof type === "function" ? {
+    type: type.name,
+    props: {
+      ...props,
+      children: type({
+        ...props,
+        children
+      })
+    }
+  } : {
+    type,
+    props: {
       ...props,
       children
-    })
-  } : {
-    name: type,
-    props,
-    children
+    }
   };
-  return element;
+}
+function Fragment({
+  children
+}) {
+  return children;
 }
 const React = {
   createElement,
-  Fragment: "Fragment"
+  Fragment
 };
 export default React;

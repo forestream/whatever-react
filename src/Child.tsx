@@ -1,5 +1,5 @@
 import React from "./react";
 
-export default function Child() {
-	return <p>This is child.</p>;
+export default function Child({ children }) {
+	return <p>{children}</p>;
 }
