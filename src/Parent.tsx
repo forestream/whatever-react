@@ -1,6 +1,5 @@
 import Child from "./Child";
-import React from "./react";
 
-export default function Parent({ children, ...props }) {
+export default function Parent({ children }) {
 	return <Child>{children}</Child>;
 }
