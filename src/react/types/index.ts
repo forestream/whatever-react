@@ -4,9 +4,9 @@ export type PropsWithoutChildren = Omit<
 	Record<string, unknown>,
 	"children"
 > | null;
-export type PropsWithChlidren = PropsWithoutChildren & Children;
+export type PropsWithChildren = PropsWithoutChildren & Children;
 
-export type Component = (props: PropsWithChlidren) => ReactElement;
+export type Component = (props: PropsWithChildren) => ReactElement;
 
 export type ReactElementType = Component | keyof HTMLElementTagNameMap;
 

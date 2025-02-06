@@ -6,7 +6,7 @@
 		"lib": ["ES2020", "DOM", "DOM.Iterable"],
 		"skipLibCheck": true,
 		"paths": {
-			"@/*": ["./*"]
+			"@/*": ["./src/*"]
 		},
 
 		/* Bundler mode */
@@ -16,7 +16,7 @@
 		"moduleDetection": "force",
 		"noEmit": true,
 		"jsx": "react-jsx",
-		"jsxImportSource": "@/src/react",
+		"jsxImportSource": "@/react",
 		"noImplicitAny": false,
 
 		/* Linting */
