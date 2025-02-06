@@ -3,20 +3,30 @@ import {
 	PropsWithoutChildren,
 	ReactElement,
 	ReactElementType,
+	VirtualDOM,
 } from "../types";
 
-export function createElement(
-	type: ReactElementType,
-	props: PropsWithoutChildren,
-	...children: Children
-): ReactElement {
+const React = (function () {
+	const virtualDOM = new VirtualDOM();
+
+	function createElement(
+		type: ReactElementType,
+		props: PropsWithoutChildren,
+		...children: Children
+	): ReactElement {
+		return {
+			type,
+			props,
+			children: children.flat(Infinity),
+		};
+	}
+
 	return {
-		type,
-		props,
-		children: children.flat(Infinity),
+		createElement,
+		createRoot: virtualDOM.createRoot.bind(virtualDOM),
+		render: virtualDOM.render.bind(virtualDOM),
 	};
-}
+})();
 
-const React = { createElement };
-
+export const { createRoot, render, createElement } = React;
 export default React;
