@@ -26,6 +26,8 @@ export class VirtualNode {
 	parentNode?: VirtualNode;
 	content: HTMLElement | ReactElement | string;
 	component?: Component;
+	onClick?: (e: MouseEvent) => void;
+	onChange?: (e: Event) => void;
 
 	constructor(node: HTMLElement | ReactElement | string) {
 		this.content = node;
@@ -38,7 +40,7 @@ export class VirtualNode {
 			return;
 		}
 
-		// 루트 노드 생성할 때
+		// 루트 노드를 생성할 때
 		if (node instanceof HTMLElement) {
 			this.type = "root";
 			this.name = node.localName;
@@ -59,6 +61,8 @@ export class VirtualNode {
 			this.type = "htmlElement";
 			this.name = node.type;
 			this.props = node.props;
+			this.onChange = node.props?.onChange as (e: Event) => void;
+			this.onClick = node.props?.onClick as (e: MouseEvent) => void;
 		}
 	}
 
@@ -152,10 +156,9 @@ export class VirtualDOM {
 
 	render(reactElement: ReactElement) {
 		if (!this.root) {
-			console.error(
+			throw new Error(
 				"루트 노드가 존재해야 합니다. createRoot()를 호출하여 루트 노드를 생성하세요."
 			);
-			return;
 		}
 
 		const newTree = this.generateVirtualDOMTree(reactElement);
@@ -174,8 +177,17 @@ export class VirtualDOM {
 
 					if (child.type === "htmlElement") {
 						const newElement = document.createElement(child.name!);
+
+						if (child.onClick) {
+							newElement.addEventListener("click", child.onClick);
+						}
+						if (child.onChange) {
+							newElement.addEventListener("change", child.onChange);
+						}
+
 						Object.entries((child.content as ReactElement).props ?? {}).forEach(
 							([key, value]) => {
+								if (key === "onClick" || key === "onChange") return;
 								newElement.setAttribute(key, value as string);
 							}
 						);
@@ -184,7 +196,7 @@ export class VirtualDOM {
 
 					if (child.type === "primitive") {
 						currentRealNode.appendChild(
-							// child.content 값은 'object'를 제외한 모든 값이 될 수 있습니다. 예외 처리 추가 필요
+							// child.content 값은 'object'를 제외한 모든 값이 될 수 있습니다. 예외 처리 필요
 							document.createTextNode(child.content as string)
 						);
 					}
@@ -216,5 +228,8 @@ export class VirtualDOM {
 		this.realRoot!.replaceChildren(nextRealDOMRoot);
 	}
 
+	/**
+	 * 현재 트리와 새로운 트리를 비교할 로직
+	 */
 	rerender() {}
 }

@@ -1,32 +1,51 @@
 import { useState } from "@/react/jsx-runtime";
+import Horizontal from "./Horizontal";
 
 export default function App() {
 	const [count, setCount] = useState(0);
 	const [count2, setCount2] = useState(1);
+	const [todos, setTodos] = useState(["hiking", "running"]);
+	const [todoText, setTodoText] = useState("");
 
-	const handleClick = (e: MouseEvent) => {
-		if (e.target.id === "increase") {
-			setCount(count + 1);
-			setCount2(count2 + 2);
-		}
+	const handleClick = () => {
+		setCount(count + 1);
+		setCount2(count2 + 2);
 	};
 
-	window.removeEventListener("click", handleClick);
-	window.addEventListener("click", handleClick);
+	const handleAddTodo = () => {
+		setTodos([...todos, todoText]);
+		setTodoText("");
+	};
+
+	const handleChange = (e: Event) => {
+		setTodoText(e.target.value);
+		(e.target as HTMLInputElement).focus();
+	};
+
+	console.log(todoText);
 
 	return (
 		<main class="main">
 			<p>counter: {count}</p>
 			<p>counter: {count2}</p>
-			<button id="increase">+</button>
-			{/* <form>
-				<input />
-				<button>할 일 추가</button>
+			<button id="increase" onClick={handleClick}>
+				+
+			</button>
+			<Horizontal class="horizontal" />
+			<form>
+				<input value={todoText} onChange={handleChange} />
+				<button onClick={handleAddTodo} id="add-todo">
+					할 일 추가
+				</button>
 			</form>
-			<div class="todo-item">
-				<p>Todo content</p>
-				<input type="checkbox" />
-			</div> */}
+			<div class="todo-item__container">
+				{todos.map((todo) => (
+					<div class="todo-item">
+						<p>{todo}</p>
+						<input type="checkbox" class="checkbox" />
+					</div>
+				))}
+			</div>
 		</main>
 	);
 }
