@@ -1,4 +1,4 @@
-import Child from "@/Child";
+import { HTML_ELEMENT_TAG_NAMES } from "@/constants";
 
 export type Child = string | ReactElement;
 export type Children = Child[];
@@ -19,7 +19,7 @@ export type ReactElement = {
 };
 
 export class VirtualNode {
-	type: "root" | "htmlElement" | "component" | "string";
+	type?: "root" | "htmlElement" | "component" | "primitive";
 	name?: Component["name"] | keyof HTMLElementTagNameMap;
 	props?: PropsWithoutChildren;
 	children: VirtualNode[];
@@ -31,17 +31,17 @@ export class VirtualNode {
 		this.content = node;
 		this.children = [];
 
+		// 원시값이나 함수일 때
+		if (typeof node !== "object") {
+			this.type = "primitive";
+			this.content = node;
+			return;
+		}
+
 		// 루트 노드 생성할 때
 		if (node instanceof HTMLElement) {
 			this.type = "root";
 			this.name = node.localName;
-			return;
-		}
-
-		// 문자열일 때
-		if (typeof node === "string") {
-			this.type = "string";
-			this.content = node;
 			return;
 		}
 
@@ -55,53 +55,69 @@ export class VirtualNode {
 		}
 
 		// type이 HTML tag name일 때
-		this.type = "htmlElement";
-		this.name = node.type;
-		this.props = node.props;
+		if (node.type in HTML_ELEMENT_TAG_NAMES) {
+			this.type = "htmlElement";
+			this.name = node.type;
+			this.props = node.props;
+		}
 	}
 
 	appendChild(node: VirtualNode) {
-		if (this.type === "string") {
-			throw new Error("string 타입 노드에는 자식 노드를 추가할 수 없습니다.");
+		if (this.type === "primitive") {
+			throw new Error(
+				"primitive 타입 노드에는 자식 노드를 추가할 수 없습니다."
+			);
 		}
 		node.parentNode = this;
 		this.children.push(node);
 		return node;
 	}
+
+	// shallow copy
+	cloneNode() {
+		const clone = new VirtualNode(this.content);
+		Object.keys(clone).forEach((key) => {
+			if (key === "content") return;
+			clone[key] = this[key];
+		});
+		return clone;
+	}
 }
 
 export class VirtualDOM {
+	realRoot: null | HTMLElement;
 	root: null | VirtualNode;
 
 	constructor() {
 		this.root = null;
+		this.realRoot = null;
 	}
 
 	createRoot(htmlElement: HTMLElement) {
-		this.root = new VirtualNode(htmlElement);
+		this.realRoot = htmlElement;
+		this.root = new VirtualNode(htmlElement.cloneNode() as HTMLElement);
 		return this;
 	}
 
-	generateTree(reactElement: ReactElement) {
+	generateVirtualDOMTree(reactElement: ReactElement) {
 		if (!this.root) {
-			console.error(
+			throw new Error(
 				"루트 노드가 존재해야 합니다. createRoot()로 루트 노드를 생성하세요."
 			);
-			return;
 		} else if (!(this.root.content instanceof HTMLElement)) {
-			console.error(
+			throw new Error(
 				"루트 VirtualNode는 HTMLElement 타입이어야 합니다. createRoot() 인수로 HTMLElement를 전달하세요."
 			);
-			return;
 		}
 
-		const newNode = new VirtualNode(reactElement);
+		const origin = new VirtualNode(reactElement);
 
-		let currentNode = this.root;
-		currentNode.appendChild(newNode);
+		const newTree = new VirtualNode(this.root.content);
+		let currentNode = newTree.appendChild(origin);
+
 		(function traverse() {
-			if (currentNode.type === "string") {
-				// 동작 없음
+			if (currentNode.type === "primitive") {
+				// 원시값일 때 동작 없음
 			}
 
 			if (currentNode.type === "htmlElement") {
@@ -130,19 +146,25 @@ export class VirtualDOM {
 				});
 			}
 		})();
+
+		return newTree;
 	}
 
 	render(reactElement: ReactElement) {
 		if (!this.root) {
-			console.error("루트 노드가 존재해야 합니다.");
+			console.error(
+				"루트 노드가 존재해야 합니다. createRoot()를 호출하여 루트 노드를 생성하세요."
+			);
 			return;
 		}
 
-		this.generateTree(reactElement);
+		const newTree = this.generateVirtualDOMTree(reactElement);
+		this.root = newTree;
 
-		const nextRealDOMContainer = (this.root.content as HTMLElement).cloneNode();
-		let currentVirtualNode = this.root;
-		let currentRealNode: Node = nextRealDOMContainer;
+		const nextRealDOMRoot = document.createDocumentFragment();
+		let currentVirtualNode = newTree;
+		let currentRealNode: Node = nextRealDOMRoot;
+
 		(function traverse() {
 			if (currentVirtualNode.children) {
 				currentVirtualNode.children.forEach((child, i) => {
@@ -154,14 +176,15 @@ export class VirtualDOM {
 						const newElement = document.createElement(child.name!);
 						Object.entries((child.content as ReactElement).props ?? {}).forEach(
 							([key, value]) => {
-								newElement[key] = value;
+								newElement.setAttribute(key, value as string);
 							}
 						);
 						currentRealNode.appendChild(newElement);
 					}
 
-					if (child.type === "string") {
+					if (child.type === "primitive") {
 						currentRealNode.appendChild(
+							// child.content 값은 'object'를 제외한 모든 값이 될 수 있습니다. 예외 처리 추가 필요
 							document.createTextNode(child.content as string)
 						);
 					}
@@ -172,21 +195,26 @@ export class VirtualDOM {
 				});
 			}
 
+			/**
+			 * 함수 컴포넌트를 DOM으로 생성할 때 HTMLTemplateElement를 사용 후
+			 * 템플릿 하위 요소를 템플릿의 부모 요소에 연결하고
+			 * 사용한 템플릿 요소를 제거
+			 */
 			if (currentRealNode.nodeName.toLowerCase() === "template") {
 				currentRealNode.childNodes.forEach((child) => {
 					currentRealNode.parentNode!.appendChild(child);
 				});
-				const prevNode = currentRealNode;
+				const templateNode = currentRealNode;
 				currentRealNode = currentRealNode.parentNode ?? currentRealNode;
-				currentRealNode.removeChild(prevNode);
+				currentRealNode.removeChild(templateNode);
 				return;
 			}
+
 			currentRealNode = currentRealNode.parentNode ?? currentRealNode;
 		})();
 
-		(this.root.content as HTMLElement).parentNode?.replaceChild(
-			nextRealDOMContainer.cloneNode(true),
-			this.root.content as HTMLElement
-		);
+		this.realRoot!.replaceChildren(nextRealDOMRoot);
 	}
+
+	rerender() {}
 }
