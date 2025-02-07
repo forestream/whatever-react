@@ -1,11 +1,16 @@
-import Parent from "./Parent";
-
 export default function App() {
+	const handleSubmit = (e: SubmitEvent) => {
+		e.preventDefault();
+	};
+
 	return (
-		<Parent>
-			<div style={"width: 100px; height: 100px; background-color: black"}></div>
-			<p>This is a paragraph element.</p>
-			<main>This is a string wrapped by Parent comp.</main>
-		</Parent>
+		<main className="main">
+			<form onSubmit={handleSubmit}>
+				<input />
+				<button>할 일 추가</button>
+			</form>
+			<p>Todo content</p>
+			<input type="checkbox" />
+		</main>
 	);
 }
