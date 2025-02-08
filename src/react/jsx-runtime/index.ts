@@ -34,7 +34,7 @@ const React = (function () {
 		return {
 			type,
 			props,
-			children: children.flat(Infinity),
+			children: children.length === 0 ? undefined : children.flat(Infinity),
 		};
 	}
 
