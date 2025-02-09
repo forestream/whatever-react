@@ -12,6 +12,9 @@ const React = (function () {
 
 	const states: any[] = [];
 	let stateIndex = 0;
+	const getStates = () => states;
+	const getStateIndex = () => stateIndex;
+	const setStateIndex = (newStateIndex: number) => (stateIndex = newStateIndex);
 
 	function render(reactElement: ReactElement) {
 		stateIndex = 0;
@@ -19,6 +22,11 @@ const React = (function () {
 			initRenderComponent.push(reactElement);
 		}
 		virtualDOM.render(reactElement);
+	}
+
+	function rerender() {
+		stateIndex = 0;
+		virtualDOM.rerender();
 	}
 
 	function createRoot(root: HTMLElement) {
@@ -48,7 +56,7 @@ const React = (function () {
 
 		function setState(newState: T) {
 			states[currentIndex] = newState;
-			render(initRenderComponent[0]);
+			rerender();
 		}
 
 		return [states[currentIndex], setState];
@@ -58,8 +66,18 @@ const React = (function () {
 		useState,
 		createElement,
 		createRoot,
+		getStateIndex,
+		setStateIndex,
+		getStates,
 	};
 })();
 
-export const { useState, createRoot, createElement } = React;
+export const {
+	useState,
+	createRoot,
+	createElement,
+	getStateIndex,
+	setStateIndex,
+	getStates,
+} = React;
 export default React;

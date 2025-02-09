@@ -1,4 +1,5 @@
 import { HTML_ELEMENT_TAG_NAMES } from "@/constants";
+import { getStateIndex, getStates, setStateIndex } from "@/react/jsx-runtime";
 
 export type Child = string | ReactElement;
 export type Children = Child[];
@@ -28,6 +29,9 @@ export class VirtualNode {
 	component?: Component;
 	onClick?: (e: MouseEvent) => void;
 	onChange?: (e: Event) => void;
+	states?: unknown[];
+	startStateIndex?: number;
+	endStateIndex?: number;
 
 	constructor(node: HTMLElement | ReactElement | string) {
 		this.content = node;
@@ -77,6 +81,13 @@ export class VirtualNode {
 		return node;
 	}
 
+	replaceChild(oldNode: VirtualNode, newNode: VirtualNode) {
+		const targetIndex = this.children.indexOf(oldNode);
+		this.children[targetIndex] = newNode;
+		oldNode.parentNode = undefined;
+		newNode.parentNode = this;
+	}
+
 	// shallow copy
 	cloneNode() {
 		const clone = new VirtualNode(this.content);
@@ -103,21 +114,12 @@ export class VirtualDOM {
 		return this;
 	}
 
-	generateVirtualDOMTree(reactElement: ReactElement) {
-		if (!this.root) {
-			throw new Error(
-				"루트 노드가 존재해야 합니다. createRoot()로 루트 노드를 생성하세요."
-			);
-		} else if (!(this.root.content instanceof HTMLElement)) {
-			throw new Error(
-				"루트 VirtualNode는 HTMLElement 타입이어야 합니다. createRoot() 인수로 HTMLElement를 전달하세요."
-			);
-		}
-
-		const origin = new VirtualNode(reactElement);
-
-		const newTree = new VirtualNode(this.root.content);
-		let currentNode = newTree.appendChild(origin);
+	static generateVirtualDOMTree(reactElement: ReactElement) {
+		/**
+		 * 기존 트리를 변경하지 않도록 새로운 VirtualNode를 생성해서 반환합니다.
+		 */
+		const newTree = new VirtualNode(reactElement);
+		let currentNode = newTree;
 
 		(function traverse() {
 			if (currentNode.type === "primitive") {
@@ -133,14 +135,29 @@ export class VirtualDOM {
 			if (currentNode.type === "component") {
 				const { props, children } = currentNode.content as ReactElement;
 
-				const virtualNode = new VirtualNode(
+				/**
+				 * 함수 컴포넌트를 실행하기 전 stateIndex와 실행 후 stateIndex 사이의 배열을 복사하여
+				 * virtualNode.states에 저장.
+				 */
+				const stateIndexBefore = getStateIndex();
+
+				const newVirtualNode = new VirtualNode(
 					currentNode.component!({
 						...props,
-						children: children,
+						children,
 					})
 				);
 
-				currentNode.appendChild(virtualNode);
+				const stateIndexAfter = getStateIndex();
+
+				currentNode.startStateIndex = stateIndexBefore;
+				currentNode.endStateIndex = stateIndexAfter;
+				currentNode.states = getStates().slice(
+					stateIndexBefore,
+					stateIndexAfter
+				);
+
+				currentNode.appendChild(newVirtualNode);
 			}
 
 			if (currentNode.children.length) {
@@ -154,18 +171,11 @@ export class VirtualDOM {
 		return newTree;
 	}
 
-	render(reactElement: ReactElement) {
-		if (!this.root) {
-			throw new Error(
-				"루트 노드가 존재해야 합니다. createRoot()를 호출하여 루트 노드를 생성하세요."
-			);
-		}
-
-		const newTree = this.generateVirtualDOMTree(reactElement);
+	realizeVirtualDOMTree(newTree: VirtualNode) {
 		this.root = newTree;
-
 		const nextRealDOMRoot = document.createDocumentFragment();
-		let currentVirtualNode = newTree;
+
+		let currentVirtualNode = this.root;
 		let currentRealNode: Node = nextRealDOMRoot;
 
 		(function traverse() {
@@ -228,8 +238,61 @@ export class VirtualDOM {
 		this.realRoot!.replaceChildren(nextRealDOMRoot);
 	}
 
+	render(reactElement: ReactElement) {
+		if (!this.root) {
+			throw new Error(
+				"루트 노드가 존재해야 합니다. createRoot()를 호출하여 루트 노드를 생성하세요."
+			);
+		}
+
+		const newTree = VirtualDOM.generateVirtualDOMTree(reactElement);
+
+		this.root.appendChild(newTree);
+
+		this.realizeVirtualDOMTree(newTree);
+	}
+
 	/**
-	 * 현재 트리와 새로운 트리를 비교할 로직
+	 * 현재 트리와 새로운 트리를 비교 후 실제 DOM 교체
 	 */
-	rerender() {}
+	rerender() {
+		let currentNode = this.root!;
+
+		(function traverse(this: VirtualDOM) {
+			if (currentNode.type === "component") {
+				const prevStates = currentNode.states;
+				const { startStateIndex, endStateIndex } = currentNode;
+				const currentStates = getStates().slice(startStateIndex, endStateIndex);
+
+				if (
+					prevStates?.some((prevState, i) => prevState !== currentStates[i])
+				) {
+					// 새로운 VirtualNode 생성 후 기존 노드와 교체
+					setStateIndex(currentNode.startStateIndex!);
+
+					const newSubTree = VirtualDOM.generateVirtualDOMTree(
+						currentNode.content as ReactElement
+					);
+
+					if (currentNode.parentNode) {
+						currentNode.parentNode.replaceChild(currentNode, newSubTree);
+					} else {
+						this.root = newSubTree;
+					}
+
+					currentNode = newSubTree;
+					currentNode.states = currentStates;
+				}
+			}
+
+			if (currentNode.children.length) {
+				currentNode.children.forEach((child) => {
+					currentNode = child;
+					traverse.call(this);
+				});
+			}
+		}).call(this);
+
+		this.realizeVirtualDOMTree(this.root!);
+	}
 }

@@ -1,9 +1,11 @@
 import { useState } from "@/react/jsx-runtime";
 import Horizontal from "./Horizontal";
+import Counter from "./Counter";
 
 export default function App() {
 	const [count, setCount] = useState(0);
-	const [count2, setCount2] = useState(1);
+	const [count2, setCount2] = useState(0);
+	const [count3, setCount3] = useState(0);
 	const [todos, setTodos] = useState(["hiking", "running"]);
 	const [todoText, setTodoText] = useState("");
 
@@ -11,6 +13,7 @@ export default function App() {
 		setCount(count + 1);
 		setCount2(count2 + 2);
 	};
+	const handleCounter = () => setCount3(count3 + 3);
 
 	const handleAddTodo = () => {
 		setTodos([...todos, todoText]);
@@ -18,19 +21,24 @@ export default function App() {
 	};
 
 	const handleChange = (e: Event) => {
-		setTodoText(e.target.value);
+		setTodoText((e.target as HTMLInputElement).value);
 		(e.target as HTMLInputElement).focus();
 	};
 
-	console.log(todoText);
+	console.log("render App comp");
 
 	return (
 		<main class="main">
 			<p>counter: {count}</p>
+			<button id="increase" onClick={handleClick}>
+				+
+			</button>
 			<p>counter: {count2}</p>
 			<button id="increase" onClick={handleClick}>
 				+
 			</button>
+			<Counter />
+			<Counter onClick={handleCounter}>{count3}</Counter>
 			<Horizontal class="horizontal" />
 			<form>
 				<input value={todoText} onChange={handleChange} />
