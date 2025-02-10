@@ -12,8 +12,6 @@ export default function Counter({
 
 	const handleIncrease = () => setCount(count + 1);
 
-	console.log("render Counter comp");
-
 	return (
 		<div>
 			<p>Counter: {children ? children : count}</p>
