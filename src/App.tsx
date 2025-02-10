@@ -31,32 +31,32 @@ export default function App() {
 	};
 
 	return (
-		<main class="main">
+		<main className="main">
 			<h1>할 일</h1>
-			<Horizontal class="horizontal" />
-			<form class="todo-form">
-				<div class="todo-form__input-container">
+			<Horizontal className="horizontal" />
+			<form className="todo-form">
+				<div className="todo-form__input-container">
 					<input
 						value={todoText}
 						onChange={handleChange}
-						class="todo-form__input"
+						className="todo-form__input"
 					/>
 					<button
 						onClick={handleAddTodo}
-						class="todo-form__button"
+						className="todo-form__button"
 						id="add-todo"
 					>
 						할 일 추가
 					</button>
 				</div>
 			</form>
-			<div class="todo-item__container">
+			<div className="todo-item__container">
 				{todos.map((todo) => (
-					<div class="todo-item">
+					<div className="todo-item">
 						<p>{todo.content}</p>
 						<input
 							type="checkbox"
-							class="checkbox"
+							className="checkbox"
 							checked={todo.done}
 							onChange={() => toggleDone(todo)}
 						/>

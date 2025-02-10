@@ -1,5 +1,6 @@
 import { HTML_ELEMENT_TAG_NAMES } from "@/constants";
 import { getStateIndex, getStates, setStateIndex } from "@/react/jsx-runtime";
+import { hasSetter } from "@/utils/hasSetter";
 
 export type Child = string | ReactElement;
 export type Children = Child[];
@@ -197,10 +198,13 @@ export class VirtualDOM {
 
 						Object.entries((child.content as ReactElement).props ?? {}).forEach(
 							([key, value]) => {
+								if (hasSetter(newElement, key)) newElement[key] = value;
+
 								if (key === "onClick" || key === "onChange") return;
 								newElement.setAttribute(key, value as string);
 							}
 						);
+
 						currentRealNode.appendChild(newElement);
 					}
 

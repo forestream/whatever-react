@@ -1,3 +1,3 @@
-export default function Horizontal({ class: className }) {
-	return <hr class={className} />;
+export default function Horizontal({ className: className }) {
+	return <hr className={className} />;
 }
