@@ -172,11 +172,10 @@ export class VirtualDOM {
 		return newTree;
 	}
 
-	realizeVirtualDOMTree(newTree: VirtualNode) {
-		this.root = newTree;
+	realizeVirtualDOMTree() {
 		const nextRealDOMRoot = document.createDocumentFragment();
 
-		let currentVirtualNode = this.root;
+		let currentVirtualNode = this.root!;
 		let currentRealNode: Node = nextRealDOMRoot;
 
 		(function traverse() {
@@ -253,7 +252,7 @@ export class VirtualDOM {
 
 		this.root.appendChild(newTree);
 
-		this.realizeVirtualDOMTree(newTree);
+		this.realizeVirtualDOMTree();
 	}
 
 	/**
@@ -268,12 +267,13 @@ export class VirtualDOM {
 				const { startStateIndex, endStateIndex } = currentNode;
 				const currentStates = getStates().slice(startStateIndex, endStateIndex);
 
+				// 컴포넌트의 상태가 업데이트 되었다면
 				if (
 					prevStates?.some((prevState, i) => prevState !== currentStates[i])
 				) {
-					// 새로운 VirtualNode 생성 후 기존 노드와 교체
 					setStateIndex(currentNode.startStateIndex!);
 
+					// 새로운 VirtualNode 생성 후 기존 노드와 교체
 					const newSubTree = VirtualDOM.generateVirtualDOMTree(
 						currentNode.content as ReactElement
 					);
@@ -297,6 +297,6 @@ export class VirtualDOM {
 			}
 		}).call(this);
 
-		this.realizeVirtualDOMTree(this.root!);
+		this.realizeVirtualDOMTree();
 	}
 }
