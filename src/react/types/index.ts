@@ -182,13 +182,6 @@ export class VirtualDOM {
 	static compare(virtualNode: VirtualNode, realNode: Node): Node {
 		if (virtualNode.type === "primitive") {
 			if (String(virtualNode.content) !== realNode.textContent) {
-				console.log(virtualNode);
-				console.log(
-					"virtual: " +
-						String(virtualNode.content) +
-						", real: " +
-						realNode.textContent
-				);
 				realNode.textContent = virtualNode.content as string;
 			}
 

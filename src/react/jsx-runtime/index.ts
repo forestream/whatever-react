@@ -14,7 +14,8 @@ const React = (function () {
 	let stateIndex = 0;
 	const getStates = () => states;
 	const getStateIndex = () => stateIndex;
-	const setStateIndex = (newStateIndex: number) => (stateIndex = newStateIndex);
+	const setStateIndex = (nextStateIndex: number) =>
+		(stateIndex = nextStateIndex);
 
 	function render(reactElement: ReactElement) {
 		stateIndex = 0;
@@ -46,17 +47,27 @@ const React = (function () {
 		};
 	}
 
-	function useState<T>(initState: T): [T, (newState: T) => void] {
+	type Initializer<T> = T extends any ? T | ((prevState: T) => T) : never;
+
+	function useState<T>(
+		initState: Initializer<T>
+	): [T, (nextState: Initializer<T>) => void] {
 		const currentIndex = stateIndex++;
 
-		// 초기 렌더링 시에 states[stateIndex]에 값이 없으므로 initState를 push합니다.
 		if (states.length < currentIndex + 1) {
-			states.push(initState);
+			states.push(typeof initState === "function" ? initState() : initState);
 		}
 
-		// todo: 얕은 비교 후 값이 다르면 리렌더
-		function setState(newState: T) {
-			states[currentIndex] = newState;
+		function setState(nextState: Initializer<T>) {
+			const currentState = states[currentIndex];
+
+			const returnedNextState =
+				typeof nextState === "function" ? nextState(currentState) : nextState;
+
+			if (currentState === returnedNextState) return;
+
+			states[currentIndex] = returnedNextState;
+
 			rerender();
 		}
 
@@ -65,8 +76,8 @@ const React = (function () {
 
 	return {
 		useState,
-		createElement,
 		createRoot,
+		createElement,
 		getStateIndex,
 		setStateIndex,
 		getStates,
