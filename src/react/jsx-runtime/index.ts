@@ -54,6 +54,7 @@ const React = (function () {
 			states.push(initState);
 		}
 
+		// todo: 얕은 비교 후 값이 다르면 리렌더
 		function setState(newState: T) {
 			states[currentIndex] = newState;
 			rerender();

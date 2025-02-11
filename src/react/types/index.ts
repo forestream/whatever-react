@@ -124,7 +124,7 @@ export class VirtualDOM {
 
 		(function traverse() {
 			if (currentNode.type === "primitive") {
-				// 원시값일 때 동작 없음
+				// 노드값이 원시값일 때 동작 없음 = currentNode에 append할 children이 없음
 			}
 
 			if (currentNode.type === "htmlElement") {
@@ -172,73 +172,156 @@ export class VirtualDOM {
 		return newTree;
 	}
 
+	/**
+	 * tagName이 다르면 가상 노드를 기반으로 요소를 새로 생성 후 실제 노드와 교체한다.
+	 * attribute만 다르면 실제 노드를 유지하고 attribute만 수정한다.
+	 * 가상 노드가 텍스트 노드일 때는 실제 텍스트 노드를 수정한다.
+	 * @param virtualNode 리렌더링 된 가상 노드
+	 * @param node 현재 브라우저 화면에 존재하는 실제 노드
+	 */
+	static compare(virtualNode: VirtualNode, realNode: Node): Node {
+		if (virtualNode.type === "primitive") {
+			if (String(virtualNode.content) !== realNode.textContent) {
+				console.log(virtualNode);
+				console.log(
+					"virtual: " +
+						String(virtualNode.content) +
+						", real: " +
+						realNode.textContent
+				);
+				realNode.textContent = virtualNode.content as string;
+			}
+
+			return realNode;
+		}
+
+		if (virtualNode.name !== realNode.nodeName.toLowerCase()) {
+			const newElement = document.createElement(virtualNode.name!);
+
+			if (virtualNode.onClick) {
+				newElement.addEventListener("click", virtualNode.onClick);
+			}
+			if (virtualNode.onChange) {
+				newElement.addEventListener("change", virtualNode.onChange);
+			}
+
+			Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
+				([key, value]) => {
+					if (hasSetter(newElement, key)) newElement[key] = value;
+
+					if (key === "onClick" || key === "onChange") return;
+				}
+			);
+
+			realNode.parentNode &&
+				realNode.parentNode.replaceChild(newElement, realNode);
+
+			return newElement;
+		}
+
+		if (virtualNode.onClick) {
+			(realNode as HTMLElement).addEventListener("click", virtualNode.onClick);
+		}
+		if (virtualNode.onChange) {
+			realNode.addEventListener("change", virtualNode.onChange);
+		}
+
+		Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
+			([key, value]) => {
+				if (hasSetter(realNode, key)) realNode[key] = value;
+
+				if (key === "onClick" || key === "onChange") return;
+			}
+		);
+
+		return realNode;
+	}
+
 	realizeVirtualDOMTree() {
-		const nextRealDOMRoot = document.createDocumentFragment();
-
 		let currentVirtualNode = this.root!;
-		let currentRealNode: Node = nextRealDOMRoot;
+		let currentRealNode: Node = this.realRoot!;
 
-		(function traverse() {
+		(function traverse(initIndex?: number) {
+			/**
+			 * 리렌더링 할 때 해당 인덱스에 노드(HTMLElement)가 이미 있다면 노드를 새로 생성하지 않고 해당 노드를 수정
+			 */
+			let realChildNodeIndex = initIndex ?? 0;
+
 			if (currentVirtualNode.children) {
-				currentVirtualNode.children.forEach((child, i) => {
-					if (child.type === "component") {
-						currentRealNode.appendChild(document.createElement("template"));
+				currentVirtualNode.children.forEach((virtualChild) => {
+					const realChild = currentRealNode.childNodes.item(realChildNodeIndex);
+
+					if (virtualChild.type === "component") {
+						/**
+						 * 가상 노드 child가 컴포넌트라면 실제 DOM 노드는 생성하지 않는다.
+						 */
 					}
 
-					if (child.type === "htmlElement") {
-						const newElement = document.createElement(child.name!);
+					/**
+					 * todo: HTMLInputElement에 'input' 이벤트가 발생할 때마다
+					 * 리렌더링하면서 포커스를 잃어버리는 문제 해결 방안
+					 * - input.value = 'foo'; 형식의 코드가 실행되면 포커스가 해제되지 않는다.
+					 * input 요소 자체를 리렌더링하지 않고 기존 요소의 어트리뷰트만 업데이트 하는 방법을 생각해봐야 함.
+					 * setAttribute는 HTML attriute의 값은 바꾸지만 실제 입력 필드의 값을 바꾸지는 못함.
+					 */
+					if (virtualChild.type === "htmlElement") {
+						if (realChild) {
+							currentRealNode = VirtualDOM.compare(virtualChild, realChild);
+						} else {
+							const newElement = document.createElement(virtualChild.name!);
 
-						if (child.onClick) {
-							newElement.addEventListener("click", child.onClick);
-						}
-						if (child.onChange) {
-							newElement.addEventListener("change", child.onChange);
-						}
+							if (virtualChild.onClick) {
+								newElement.addEventListener("click", virtualChild.onClick);
+							}
+							if (virtualChild.onChange) {
+								newElement.addEventListener("change", virtualChild.onChange);
+							}
 
-						Object.entries((child.content as ReactElement).props ?? {}).forEach(
-							([key, value]) => {
+							Object.entries(
+								(virtualChild.content as ReactElement).props ?? {}
+							).forEach(([key, value]) => {
 								if (hasSetter(newElement, key)) newElement[key] = value;
 
 								if (key === "onClick" || key === "onChange") return;
-								newElement.setAttribute(key, value as string);
-							}
-						);
+							});
 
-						currentRealNode.appendChild(newElement);
+							currentRealNode = currentRealNode.appendChild(newElement);
+						}
 					}
 
-					if (child.type === "primitive") {
-						currentRealNode.appendChild(
-							// child.content 값은 'object'를 제외한 모든 값이 될 수 있습니다. 예외 처리 필요
-							document.createTextNode(child.content as string)
-						);
+					if (virtualChild.type === "primitive") {
+						if (realChild) {
+							currentRealNode = VirtualDOM.compare(virtualChild, realChild);
+						} else {
+							currentRealNode = currentRealNode.appendChild(
+								// virtualChild.content 값은 'object'를 제외한 모든 값이 될 수 있습니다. 예외 처리 필요
+								document.createTextNode(virtualChild.content as string)
+							);
+						}
 					}
 
-					currentVirtualNode = child;
-					currentRealNode = currentRealNode.childNodes.item(i);
-					traverse();
+					currentVirtualNode = virtualChild;
+					realChildNodeIndex =
+						currentVirtualNode.type === "component"
+							? traverse(realChildNodeIndex)
+							: realChildNodeIndex + traverse();
+
+					/**
+					 * traverse 종료 후 부모 노드로 복귀
+					 * currentRealNode의 이동 여부 때문에 필요함
+					 */
+					currentVirtualNode =
+						currentVirtualNode.parentNode ?? currentVirtualNode;
 				});
 			}
 
-			/**
-			 * 함수 컴포넌트를 DOM으로 생성할 때 HTMLTemplateElement를 사용 후
-			 * 템플릿 하위 요소를 템플릿의 부모 요소에 연결하고
-			 * 사용한 템플릿 요소를 제거
-			 */
-			if (currentRealNode.nodeName.toLowerCase() === "template") {
-				currentRealNode.childNodes.forEach((child) => {
-					currentRealNode.parentNode!.appendChild(child);
-				});
-				const templateNode = currentRealNode;
-				currentRealNode = currentRealNode.parentNode ?? currentRealNode;
-				currentRealNode.removeChild(templateNode);
-				return;
-			}
+			// currentVirtualNode가 컴포넌트라면 currentRealNode는 부모 노드로 이동하지 않음
+			if (currentVirtualNode.type === "component") return realChildNodeIndex;
 
 			currentRealNode = currentRealNode.parentNode ?? currentRealNode;
-		})();
 
-		this.realRoot!.replaceChildren(nextRealDOMRoot);
+			return 1;
+		})();
 	}
 
 	render(reactElement: ReactElement) {
@@ -257,6 +340,7 @@ export class VirtualDOM {
 
 	/**
 	 * 현재 트리와 새로운 트리를 비교 후 실제 DOM 교체
+	 * todo: 변경이 필요한 DOM 요소만 교체할 수 있어야 함.
 	 */
 	rerender() {
 		let currentNode = this.root!;
@@ -271,6 +355,7 @@ export class VirtualDOM {
 				if (
 					prevStates?.some((prevState, i) => prevState !== currentStates[i])
 				) {
+					// 재실행하는 컴포넌트의 stateIndex에 맞도록 React 내부 stateIndex를 인위적으로 변경해야 함
 					setStateIndex(currentNode.startStateIndex!);
 
 					// 새로운 VirtualNode 생성 후 기존 노드와 교체

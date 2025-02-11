@@ -1,6 +1,7 @@
 import { useState } from "@/react/jsx-runtime";
 import Horizontal from "./Horizontal";
 import "./App.css";
+import Counter from "./Counter";
 
 type Todo = {
 	content: string;
@@ -8,17 +9,20 @@ type Todo = {
 };
 
 export default function App() {
+	console.log("render App");
 	const [todos, setTodos] = useState<Todo[]>([]);
 	const [todoText, setTodoText] = useState("");
+	console.log("todoText: " + todoText);
 
-	const handleAddTodo = () => {
+	const handleAddTodo = (e: Event) => {
+		e.preventDefault();
 		setTodos([...todos, { content: todoText, done: false }]);
 		setTodoText("");
 	};
 
 	const handleChange = (e: Event) => {
 		setTodoText((e.target as HTMLInputElement).value);
-		(e.target as HTMLInputElement).focus();
+		// (e.target as HTMLInputElement).focus();
 	};
 
 	const toggleDone = (target: Todo) => {
@@ -32,11 +36,13 @@ export default function App() {
 
 	return (
 		<main className="main">
+			<Counter />
 			<h1>할 일</h1>
 			<Horizontal className="horizontal" />
 			<form className="todo-form">
 				<div className="todo-form__input-container">
 					<input
+						id="todo-input"
 						value={todoText}
 						onChange={handleChange}
 						className="todo-form__input"
