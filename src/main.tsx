@@ -1,6 +1,5 @@
 import App from "./App";
+import { createRoot } from "@/react/jsx-runtime";
 
-// const root = document.getElementById("root");
-
-console.log(JSON.stringify(App(), null, 2));
-console.log(App());
+const root = createRoot(document.getElementById("root")!);
+root.render(<App />);
