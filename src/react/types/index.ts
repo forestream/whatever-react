@@ -20,6 +20,20 @@ export type ReactElement = {
 	children?: Children;
 };
 
+export class SyntheticEvent {
+	nativeEvent: Event;
+
+	constructor(e: Event) {
+		for (let key in e) {
+			this[key] = e[key];
+		}
+
+		this.nativeEvent = e;
+	}
+}
+
+export type SyntheticEventHandler = (e?: SyntheticEvent) => void;
+
 export class VirtualNode {
 	type?: "root" | "htmlElement" | "component" | "primitive";
 	name?: Component["name"] | keyof HTMLElementTagNameMap;
@@ -28,15 +42,15 @@ export class VirtualNode {
 	parentNode?: VirtualNode;
 	content: HTMLElement | ReactElement | string;
 	component?: Component;
-	onClick?: (e: MouseEvent) => void;
-	onChange?: (e: Event) => void;
 	states?: unknown[];
 	startStateIndex?: number;
 	endStateIndex?: number;
+	cleanups: (() => void)[];
 
 	constructor(node: HTMLElement | ReactElement | string) {
 		this.content = node;
 		this.children = [];
+		this.cleanups = [];
 
 		// 원시값이나 함수일 때
 		if (typeof node !== "object") {
@@ -66,8 +80,6 @@ export class VirtualNode {
 			this.type = "htmlElement";
 			this.name = node.type;
 			this.props = node.props;
-			this.onChange = node.props?.onChange as (e: Event) => void;
-			this.onClick = node.props?.onClick as (e: MouseEvent) => void;
 		}
 	}
 
@@ -97,6 +109,47 @@ export class VirtualNode {
 			clone[key] = this[key];
 		});
 		return clone;
+	}
+
+	attachEventHandlersToDOM(target: Node, rerender: () => void) {
+		Object.entries(this.props ?? {}).forEach(([handlerName, handler]) => {
+			if (!handlerName.startsWith("on")) return;
+
+			const newHandler = (e?: Event) => {
+				(handler as SyntheticEventHandler)(e && new SyntheticEvent(e));
+				rerender();
+			};
+
+			const lowercaseHandlerName = handlerName.toLowerCase();
+			const lowercaseEventName = lowercaseHandlerName.slice(2);
+			target.addEventListener(lowercaseEventName, newHandler);
+
+			if (lowercaseEventName === "change")
+				target.addEventListener("input", newHandler);
+
+			this.cleanups.push(() => {
+				console.log("calling cleanup: " + lowercaseEventName + newHandler);
+				target.removeEventListener(lowercaseEventName, newHandler);
+
+				if (lowercaseEventName === "change")
+					target.removeEventListener("input", newHandler);
+			});
+		});
+	}
+
+	executeCleanups() {
+		let currentNode: VirtualNode = this;
+
+		(function traverse() {
+			while (currentNode.cleanups.length) {
+				currentNode.cleanups.shift()!();
+			}
+
+			currentNode.children.forEach((child) => {
+				currentNode = child;
+				traverse();
+			});
+		})();
 	}
 }
 
@@ -179,7 +232,11 @@ export class VirtualDOM {
 	 * @param virtualNode 리렌더링 된 가상 노드
 	 * @param node 현재 브라우저 화면에 존재하는 실제 노드
 	 */
-	static compare(virtualNode: VirtualNode, realNode: Node): Node {
+	static compare(
+		virtualNode: VirtualNode,
+		realNode: Node,
+		rerender: () => void
+	): Node {
 		if (virtualNode.type === "primitive") {
 			if (String(virtualNode.content) !== realNode.textContent) {
 				realNode.textContent = virtualNode.content as string;
@@ -191,18 +248,11 @@ export class VirtualDOM {
 		if (virtualNode.name !== realNode.nodeName.toLowerCase()) {
 			const newElement = document.createElement(virtualNode.name!);
 
-			if (virtualNode.onClick) {
-				newElement.addEventListener("click", virtualNode.onClick);
-			}
-			if (virtualNode.onChange) {
-				newElement.addEventListener("change", virtualNode.onChange);
-			}
+			virtualNode.attachEventHandlersToDOM(newElement, rerender);
 
 			Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
 				([key, value]) => {
 					if (hasSetter(newElement, key)) newElement[key] = value;
-
-					if (key === "onClick" || key === "onChange") return;
 				}
 			);
 
@@ -212,18 +262,15 @@ export class VirtualDOM {
 			return newElement;
 		}
 
-		if (virtualNode.onClick) {
-			(realNode as HTMLElement).addEventListener("click", virtualNode.onClick);
-		}
-		if (virtualNode.onChange) {
-			realNode.addEventListener("change", virtualNode.onChange);
-		}
+		virtualNode.attachEventHandlersToDOM(realNode, rerender);
 
 		Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
 			([key, value]) => {
-				if (hasSetter(realNode, key)) realNode[key] = value;
+				if (key === "value") {
+					(realNode as Element).setAttribute("value", value as string);
+				}
 
-				if (key === "onClick" || key === "onChange") return;
+				if (hasSetter(realNode, key)) realNode[key] = value;
 			}
 		);
 
@@ -233,6 +280,7 @@ export class VirtualDOM {
 	realizeVirtualDOMTree() {
 		let currentVirtualNode = this.root!;
 		let currentRealNode: Node = this.realRoot!;
+		const rerender = () => this.rerender();
 
 		(function traverse(initIndex?: number) {
 			/**
@@ -259,23 +307,22 @@ export class VirtualDOM {
 					 */
 					if (virtualChild.type === "htmlElement") {
 						if (realChild) {
-							currentRealNode = VirtualDOM.compare(virtualChild, realChild);
+							currentRealNode = VirtualDOM.compare(
+								virtualChild,
+								realChild,
+								rerender
+							);
 						} else {
 							const newElement = document.createElement(virtualChild.name!);
 
-							if (virtualChild.onClick) {
-								newElement.addEventListener("click", virtualChild.onClick);
-							}
-							if (virtualChild.onChange) {
-								newElement.addEventListener("change", virtualChild.onChange);
-							}
+							virtualChild.attachEventHandlersToDOM(newElement, rerender);
 
 							Object.entries(
 								(virtualChild.content as ReactElement).props ?? {}
 							).forEach(([key, value]) => {
-								if (hasSetter(newElement, key)) newElement[key] = value;
+								if (key.startsWith("on")) return;
 
-								if (key === "onClick" || key === "onChange") return;
+								if (hasSetter(newElement, key)) newElement[key] = value;
 							});
 
 							currentRealNode = currentRealNode.appendChild(newElement);
@@ -284,7 +331,11 @@ export class VirtualDOM {
 
 					if (virtualChild.type === "primitive") {
 						if (realChild) {
-							currentRealNode = VirtualDOM.compare(virtualChild, realChild);
+							currentRealNode = VirtualDOM.compare(
+								virtualChild,
+								realChild,
+								rerender
+							);
 						} else {
 							currentRealNode = currentRealNode.appendChild(
 								// virtualChild.content 값은 'object'를 제외한 모든 값이 될 수 있습니다. 예외 처리 필요
@@ -333,7 +384,6 @@ export class VirtualDOM {
 
 	/**
 	 * 현재 트리와 새로운 트리를 비교 후 실제 DOM 교체
-	 * todo: 변경이 필요한 DOM 요소만 교체할 수 있어야 함.
 	 */
 	rerender() {
 		let currentNode = this.root!;
@@ -348,6 +398,9 @@ export class VirtualDOM {
 				if (
 					prevStates?.some((prevState, i) => prevState !== currentStates[i])
 				) {
+					// 언마운트 될 현재 노드부터 하위로 순회하며 cleanups 호출
+					currentNode.executeCleanups();
+
 					// 재실행하는 컴포넌트의 stateIndex에 맞도록 React 내부 stateIndex를 인위적으로 변경해야 함
 					setStateIndex(currentNode.startStateIndex!);
 
