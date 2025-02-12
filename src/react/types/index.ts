@@ -115,24 +115,36 @@ export class VirtualNode {
 		Object.entries(this.props ?? {}).forEach(([handlerName, handler]) => {
 			if (!handlerName.startsWith("on")) return;
 
-			const newHandler = (e?: Event) => {
+			const lowercaseHandlerName = handlerName.toLowerCase();
+			const lowercaseEventName = lowercaseHandlerName.slice(2);
+
+			const realNodeEventHandler = (e?: Event) => {
+				if (
+					e instanceof InputEvent &&
+					lowercaseEventName === "change" &&
+					this.props?.value ===
+						(e.target as HTMLInputElement | HTMLTextAreaElement).value
+				) {
+					return;
+				}
+
 				(handler as SyntheticEventHandler)(e && new SyntheticEvent(e));
 				rerender();
 			};
 
-			const lowercaseHandlerName = handlerName.toLowerCase();
-			const lowercaseEventName = lowercaseHandlerName.slice(2);
-			target.addEventListener(lowercaseEventName, newHandler);
-
-			if (lowercaseEventName === "change")
-				target.addEventListener("input", newHandler);
+			target.addEventListener(
+				lowercaseEventName === "change" ? "input" : lowercaseHandlerName,
+				realNodeEventHandler
+			);
 
 			this.cleanups.push(() => {
-				console.log("calling cleanup: " + lowercaseEventName + newHandler);
-				target.removeEventListener(lowercaseEventName, newHandler);
-
-				if (lowercaseEventName === "change")
-					target.removeEventListener("input", newHandler);
+				// console.log(
+				// 	"calling cleanup: " + lowercaseEventName + realNodeEventHandler
+				// );
+				target.removeEventListener(
+					lowercaseEventName === "change" ? "input" : lowercaseHandlerName,
+					realNodeEventHandler
+				);
 			});
 		});
 	}
