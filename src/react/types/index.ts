@@ -25,7 +25,7 @@ export class SyntheticEvent {
 
 	constructor(e: Event) {
 		for (let key in e) {
-			this[key] = e[key];
+			this[key] = typeof e[key] === "function" ? e[key].bind(e) : e[key];
 		}
 
 		this.nativeEvent = e;
