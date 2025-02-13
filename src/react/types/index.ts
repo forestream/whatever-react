@@ -120,6 +120,7 @@ export class VirtualNode {
 		return clone;
 	}
 
+	// todo: 이전과 같은 함수일 경우 생략할 필요가 있어 보임
 	attachEventHandlersToDOM(target: Node, rerender: () => void) {
 		Object.entries(this.props ?? {}).forEach(([handlerName, handler]) => {
 			if (!handlerName.startsWith("on")) return;
@@ -158,6 +159,7 @@ export class VirtualNode {
 		});
 	}
 
+	// todo: 재귀가 필요한지 고민해보기
 	executeCleanups() {
 		let currentNode: VirtualNode = this;
 
