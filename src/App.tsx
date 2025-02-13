@@ -1,4 +1,4 @@
-import { useState } from "@/react/jsx-runtime";
+import { useEffect, useState } from "@/react/jsx-runtime";
 import Horizontal from "./Horizontal";
 import "./App.css";
 import Counter from "./Counter";
@@ -11,23 +11,13 @@ type Todo = {
 export default function App() {
 	const [todos, setTodos] = useState<Todo[]>([]);
 	const [todoText, setTodoText] = useState("");
-	const [render, setRender] = useState(0);
 
-	if (render < 3) {
-		setRender((render) => render + 1);
-	}
-
-	console.log(render);
-	console.log("render App");
-	console.log("todoText: " + todoText);
-
-	const handleAddTodo = (e: Event) => {
+	const handleAddTodo = () => {
 		setTodos([...todos, { content: todoText, done: false }]);
 		setTodoText("");
 	};
 
 	const handleChange = (e: Event) => {
-		console.log(e);
 		setTodoText((e.target as HTMLInputElement).value);
 	};
 
@@ -39,6 +29,12 @@ export default function App() {
 			)
 		);
 	};
+
+	useEffect(() => {
+		console.log("effect in App");
+
+		return () => console.log("cleanup in App");
+	}, [todos]);
 
 	return (
 		<main className="main">

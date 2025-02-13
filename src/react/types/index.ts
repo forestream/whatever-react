@@ -6,6 +6,13 @@ import {
 	rerender,
 	setStateIndex,
 	setStateUpdated,
+	getEffectIndex,
+	getEffects,
+	EffectCallback,
+	DependencyList,
+	CleanupFuntion,
+	DependencyUpdated,
+	setEffectIndex,
 } from "@/react/jsx-runtime";
 import { hasSetter } from "@/utils/hasSetter";
 
@@ -52,14 +59,25 @@ export class VirtualNode {
 	states?: unknown[];
 	startStateIndex?: number;
 	endStateIndex?: number;
-	cleanups: (() => void)[];
+	eventHandlerCleanups: (() => void)[];
 	isStale: boolean;
+	effects: [
+		EffectCallback,
+		DependencyList,
+		DependencyUpdated,
+		CleanupFuntion | void
+	][];
+	startEffectIndex?: number;
+	endEffectIndex?: number;
+	effectCleanups: (CleanupFuntion | void)[];
 
 	constructor(node: HTMLElement | ReactElement | string) {
 		this.content = node;
 		this.children = [];
-		this.cleanups = [];
+		this.eventHandlerCleanups = [];
 		this.isStale = false;
+		this.effects = [];
+		this.effectCleanups = [];
 
 		// 원시값이나 함수일 때
 		if (typeof node !== "object") {
@@ -147,10 +165,7 @@ export class VirtualNode {
 				realNodeEventHandler
 			);
 
-			this.cleanups.push(() => {
-				console.log(
-					"calling cleanup: " + lowercaseEventName + realNodeEventHandler
-				);
+			this.eventHandlerCleanups.push(() => {
 				target.removeEventListener(
 					lowercaseEventName === "change" ? "input" : lowercaseEventName,
 					realNodeEventHandler
@@ -160,12 +175,12 @@ export class VirtualNode {
 	}
 
 	// todo: 재귀가 필요한지 고민해보기
-	executeCleanups() {
+	callEventHandlerCleanups() {
 		let currentNode: VirtualNode = this;
 
 		(function traverse() {
-			while (currentNode.cleanups.length) {
-				currentNode.cleanups.shift()!();
+			while (currentNode.eventHandlerCleanups.length) {
+				currentNode.eventHandlerCleanups.shift()!();
 			}
 
 			currentNode.children.forEach((child) => {
@@ -173,6 +188,13 @@ export class VirtualNode {
 				traverse();
 			});
 		})();
+	}
+
+	callEffectCleanups() {
+		while (this.effectCleanups && this.effectCleanups.length) {
+			const cleanup = this.effectCleanups.shift();
+			typeof cleanup === "function" && cleanup();
+		}
 	}
 }
 
@@ -191,7 +213,17 @@ export class VirtualDOM {
 		return this;
 	}
 
-	static generateVirtualDOMTree(reactElement: ReactElement) {
+	static generateVirtualDOMTree(
+		reactElement: ReactElement,
+		batchCleanups?: () => void
+	) {
+		const effects: [
+			EffectCallback,
+			DependencyList,
+			DependencyUpdated,
+			CleanupFuntion | void
+		][] = [];
+
 		/**
 		 * 기존 트리를 변경하지 않도록 새로운 VirtualNode를 생성해서 반환합니다.
 		 */
@@ -217,6 +249,7 @@ export class VirtualDOM {
 				 * virtualNode.states에 저장.
 				 */
 				const stateIndexBefore = getStateIndex();
+				const effectIndexBefore = getEffectIndex();
 
 				setStateUpdated(false);
 
@@ -230,6 +263,7 @@ export class VirtualDOM {
 				if (getStateUpdated()) currentNode.isStale = true;
 
 				const stateIndexAfter = getStateIndex();
+				const effectIndexAfter = getEffectIndex();
 
 				currentNode.startStateIndex = stateIndexBefore;
 				currentNode.endStateIndex = stateIndexAfter;
@@ -237,9 +271,17 @@ export class VirtualDOM {
 					stateIndexBefore,
 					stateIndexAfter
 				);
+				currentNode.startEffectIndex = effectIndexBefore;
+				currentNode.endEffectIndex = effectIndexAfter;
+				currentNode.effects = getEffects().slice(
+					effectIndexBefore,
+					effectIndexAfter
+				);
 
 				currentNode.appendChild(newVirtualNode);
 			}
+
+			const currentNodeStoredForEffects = currentNode;
 
 			if (currentNode.children.length) {
 				currentNode.children.forEach((child) => {
@@ -256,7 +298,22 @@ export class VirtualDOM {
 					traverse();
 				});
 			}
+
+			currentNodeStoredForEffects.effects.forEach((effect) => {
+				effect[2] && effects.push(effect);
+			});
 		})();
+
+		batchCleanups && batchCleanups();
+		// effects.forEach((effect) => {
+		// 	effect[2] && typeof effect[3] === "function" && effect[3]();
+		// });
+
+		while (effects.length) {
+			const effect = effects.shift();
+			if (!effect) continue;
+			typeof effect[0] === "function" && effect[0]();
+		}
 
 		return newTree;
 	}
@@ -284,7 +341,7 @@ export class VirtualDOM {
 		if (virtualNode.name !== realNode.nodeName.toLowerCase()) {
 			const newElement = document.createElement(virtualNode.name!);
 
-			virtualNode.executeCleanups();
+			virtualNode.callEventHandlerCleanups();
 			virtualNode.attachEventHandlersToDOM(newElement, rerender);
 
 			Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
@@ -299,7 +356,7 @@ export class VirtualDOM {
 			return newElement;
 		}
 
-		virtualNode.executeCleanups();
+		virtualNode.callEventHandlerCleanups();
 		virtualNode.attachEventHandlersToDOM(realNode, rerender);
 
 		Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
@@ -353,7 +410,7 @@ export class VirtualDOM {
 						} else {
 							const newElement = document.createElement(virtualChild.name!);
 
-							virtualChild.executeCleanups();
+							virtualChild.callEventHandlerCleanups();
 							virtualChild.attachEventHandlersToDOM(
 								newElement,
 								updateVirtualDOM
@@ -447,16 +504,37 @@ export class VirtualDOM {
 					currentNode.isStale ||
 					prevStates?.some((prevState, i) => prevState !== currentStates[i])
 				) {
-					// 언마운트 될 현재 노드부터 하위로 순회하며 cleanups 호출
+					// 언마운트 될 현재 노드부터 하위로 순회하며 eventHandlerCleanups 호출
 					// todo: 자손 노드까지 재귀적으로 클린업 실행할 필요 없어 보임
-					currentNode.executeCleanups();
+					currentNode.callEventHandlerCleanups();
 
-					// 재실행하는 컴포넌트의 stateIndex에 맞도록 React 내부 stateIndex를 인위적으로 변경해야 함
+					// effectCleanups 배열도 순회하며 각 컴포넌트마다 useEffect 클린업 함수 실행 (리프노드부터)
+					const batchCleanups = () => {
+						(function traverse(virtualNode) {
+							let currentNode = virtualNode;
+
+							if (currentNode.children) {
+								currentNode.children.forEach((child) => {
+									currentNode = child;
+									traverse(currentNode);
+								});
+							}
+
+							virtualNode.effects.forEach(
+								(effect) =>
+									effect[2] && typeof effect[3] === "function" && effect[3]()
+							);
+						})(currentNode);
+					};
+
+					// 재실행하는 컴포넌트의 stateIndex에 맞도록 React 내부 stateIndex를 인위적으로 변경
 					setStateIndex(currentNode.startStateIndex!);
+					setEffectIndex(currentNode.startEffectIndex!);
 
 					// 새로운 VirtualNode 생성 후 기존 노드와 교체
 					const newSubTree = VirtualDOM.generateVirtualDOMTree(
-						currentNode.content as ReactElement
+						currentNode.content as ReactElement,
+						batchCleanups
 					);
 
 					if (currentNode.parentNode) {

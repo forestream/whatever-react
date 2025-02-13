@@ -6,6 +6,11 @@ import {
 	VirtualDOM,
 } from "../types";
 
+export type CleanupFuntion = () => void;
+export type EffectCallback = () => void | CleanupFuntion;
+export type DependencyList = any[] | undefined;
+export type DependencyUpdated = boolean;
+
 const React = (function () {
 	const virtualDOM = new VirtualDOM();
 
@@ -20,13 +25,27 @@ const React = (function () {
 	const getStateUpdated = () => stateUpdated;
 	const setStateUpdated = (value: boolean) => (stateUpdated = value);
 
+	const effects: [
+		EffectCallback,
+		DependencyList,
+		DependencyUpdated,
+		CleanupFuntion | void
+	][] = [];
+	let effectIndex = 0;
+	const getEffects = () => effects;
+	const getEffectIndex = () => effectIndex;
+	const setEffectIndex = (nextEffectIndex: number) =>
+		(effectIndex = nextEffectIndex);
+
 	function render(reactElement: ReactElement) {
 		stateIndex = 0;
+		effectIndex = 0;
 		virtualDOM.initializeVirtualDOM(reactElement);
 	}
 
 	function rerender() {
 		stateIndex = 0;
+		effectIndex = 0;
 		setStateUpdated(false);
 		virtualDOM.updateVirtualDOM();
 	}
@@ -48,7 +67,7 @@ const React = (function () {
 		};
 	}
 
-	type Initializer<T> = T extends any ? T | ((prevState: T) => T) : never;
+	type Initializer<T> = T extends unknown ? T | ((prevState: T) => T) : never;
 
 	function useState<T>(
 		initState: Initializer<T>
@@ -75,8 +94,41 @@ const React = (function () {
 		return [states[currentIndex], setState];
 	}
 
+	function useEffect(
+		callback: () => void | (() => void),
+		deps?: unknown[]
+	): void {
+		const currentIndex = effectIndex++;
+
+		const updateCleanupAfterEffect = () => {
+			effects[currentIndex][3] = callback();
+		};
+
+		if (effects.length < currentIndex + 1) {
+			effects.push([updateCleanupAfterEffect, deps, true, undefined]);
+			return;
+		}
+
+		effects[currentIndex][2] = false;
+
+		const [_prevCallback, prevDeps] = effects[currentIndex];
+
+		if (
+			prevDeps === undefined ||
+			deps === undefined ||
+			prevDeps.some((prevDep, i) => prevDep !== deps[i])
+		) {
+			[
+				effects[currentIndex][0],
+				effects[currentIndex][1],
+				effects[currentIndex][2],
+			] = [updateCleanupAfterEffect, deps, true];
+		}
+	}
+
 	return {
 		useState,
+		useEffect,
 		createRoot,
 		createElement,
 		getStateIndex,
@@ -85,11 +137,15 @@ const React = (function () {
 		getStateUpdated,
 		setStateUpdated,
 		rerender,
+		getEffectIndex,
+		setEffectIndex,
+		getEffects,
 	};
 })();
 
 export const {
 	useState,
+	useEffect,
 	createRoot,
 	createElement,
 	getStateIndex,
@@ -98,5 +154,8 @@ export const {
 	getStateUpdated,
 	setStateUpdated,
 	rerender,
+	getEffectIndex,
+	setEffectIndex,
+	getEffects,
 } = React;
 export default React;
