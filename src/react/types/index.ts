@@ -408,6 +408,7 @@ export class VirtualDOM {
 		})();
 	}
 
+	// todo: VirtualNode를 전달받도록 수정
 	initializeVirtualDOM(reactElement: ReactElement) {
 		if (!this.root) {
 			throw new Error(
