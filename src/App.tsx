@@ -9,20 +9,26 @@ type Todo = {
 };
 
 export default function App() {
-	console.log("render App");
 	const [todos, setTodos] = useState<Todo[]>([]);
 	const [todoText, setTodoText] = useState("");
+	const [render, setRender] = useState(0);
+
+	if (render < 3) {
+		setRender((render) => render + 1);
+	}
+
+	console.log(render);
+	console.log("render App");
 	console.log("todoText: " + todoText);
 
 	const handleAddTodo = (e: Event) => {
-		e.preventDefault();
 		setTodos([...todos, { content: todoText, done: false }]);
 		setTodoText("");
 	};
 
 	const handleChange = (e: Event) => {
+		console.log(e);
 		setTodoText((e.target as HTMLInputElement).value);
-		// (e.target as HTMLInputElement).focus();
 	};
 
 	const toggleDone = (target: Todo) => {
@@ -39,7 +45,12 @@ export default function App() {
 			<Counter />
 			<h1>할 일</h1>
 			<Horizontal className="horizontal" />
-			<form className="todo-form">
+			<form
+				className="todo-form"
+				onSubmit={(e: Event) => {
+					e.preventDefault();
+				}}
+			>
 				<div className="todo-form__input-container">
 					<input
 						id="todo-input"

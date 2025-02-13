@@ -8,7 +8,6 @@ import {
 
 const React = (function () {
 	const virtualDOM = new VirtualDOM();
-	let initRenderComponent: ReactElement[] = [];
 
 	const states: any[] = [];
 	let stateIndex = 0;
@@ -17,17 +16,19 @@ const React = (function () {
 	const setStateIndex = (nextStateIndex: number) =>
 		(stateIndex = nextStateIndex);
 
+	let stateUpdated = false;
+	const getStateUpdated = () => stateUpdated;
+	const setStateUpdated = (value: boolean) => (stateUpdated = value);
+
 	function render(reactElement: ReactElement) {
 		stateIndex = 0;
-		if (!initRenderComponent.length) {
-			initRenderComponent.push(reactElement);
-		}
-		virtualDOM.render(reactElement);
+		virtualDOM.initializeVirtualDOM(reactElement);
 	}
 
 	function rerender() {
 		stateIndex = 0;
-		virtualDOM.rerender();
+		setStateUpdated(false);
+		virtualDOM.updateVirtualDOM();
 	}
 
 	function createRoot(root: HTMLElement) {
@@ -68,7 +69,7 @@ const React = (function () {
 
 			states[currentIndex] = returnedNextState;
 
-			rerender();
+			setStateUpdated(true);
 		}
 
 		return [states[currentIndex], setState];
@@ -81,6 +82,9 @@ const React = (function () {
 		getStateIndex,
 		setStateIndex,
 		getStates,
+		getStateUpdated,
+		setStateUpdated,
+		rerender,
 	};
 })();
 
@@ -91,5 +95,8 @@ export const {
 	getStateIndex,
 	setStateIndex,
 	getStates,
+	getStateUpdated,
+	setStateUpdated,
+	rerender,
 } = React;
 export default React;

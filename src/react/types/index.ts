@@ -1,5 +1,12 @@
 import { HTML_ELEMENT_TAG_NAMES } from "@/constants";
-import { getStateIndex, getStates, setStateIndex } from "@/react/jsx-runtime";
+import {
+	getStateUpdated,
+	getStateIndex,
+	getStates,
+	rerender,
+	setStateIndex,
+	setStateUpdated,
+} from "@/react/jsx-runtime";
 import { hasSetter } from "@/utils/hasSetter";
 
 export type Child = string | ReactElement;
@@ -46,11 +53,13 @@ export class VirtualNode {
 	startStateIndex?: number;
 	endStateIndex?: number;
 	cleanups: (() => void)[];
+	isStale: boolean;
 
 	constructor(node: HTMLElement | ReactElement | string) {
 		this.content = node;
 		this.children = [];
 		this.cleanups = [];
+		this.isStale = false;
 
 		// 원시값이나 함수일 때
 		if (typeof node !== "object") {
@@ -129,20 +138,20 @@ export class VirtualNode {
 				}
 
 				(handler as SyntheticEventHandler)(e && new SyntheticEvent(e));
-				rerender();
+				if (getStateUpdated()) rerender();
 			};
 
 			target.addEventListener(
-				lowercaseEventName === "change" ? "input" : lowercaseHandlerName,
+				lowercaseEventName === "change" ? "input" : lowercaseEventName,
 				realNodeEventHandler
 			);
 
 			this.cleanups.push(() => {
-				// console.log(
-				// 	"calling cleanup: " + lowercaseEventName + realNodeEventHandler
-				// );
+				console.log(
+					"calling cleanup: " + lowercaseEventName + realNodeEventHandler
+				);
 				target.removeEventListener(
-					lowercaseEventName === "change" ? "input" : lowercaseHandlerName,
+					lowercaseEventName === "change" ? "input" : lowercaseEventName,
 					realNodeEventHandler
 				);
 			});
@@ -207,12 +216,16 @@ export class VirtualDOM {
 				 */
 				const stateIndexBefore = getStateIndex();
 
+				setStateUpdated(false);
+
 				const newVirtualNode = new VirtualNode(
 					currentNode.component!({
 						...props,
 						children,
 					})
 				);
+
+				if (getStateUpdated()) currentNode.isStale = true;
 
 				const stateIndexAfter = getStateIndex();
 
@@ -228,6 +241,15 @@ export class VirtualDOM {
 
 			if (currentNode.children.length) {
 				currentNode.children.forEach((child) => {
+					/**
+					 * currentNode가 stale하다면(컴포넌트 내부 상태가 업데이트 되었다면)
+					 * 반환할 newTree.isStale도 true로 설정하고 가상 트리 형성을 멈춘다.
+					 * forEach 내부 상단에 있어야 이미 실행 중인 forEach 콜백함수도 얼리 리턴 할 수 있음.
+					 */
+					if (currentNode.isStale) {
+						newTree.isStale = true;
+						return;
+					}
 					currentNode = child;
 					traverse();
 				});
@@ -260,6 +282,7 @@ export class VirtualDOM {
 		if (virtualNode.name !== realNode.nodeName.toLowerCase()) {
 			const newElement = document.createElement(virtualNode.name!);
 
+			virtualNode.executeCleanups();
 			virtualNode.attachEventHandlersToDOM(newElement, rerender);
 
 			Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
@@ -274,6 +297,7 @@ export class VirtualDOM {
 			return newElement;
 		}
 
+		virtualNode.executeCleanups();
 		virtualNode.attachEventHandlersToDOM(realNode, rerender);
 
 		Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
@@ -289,10 +313,10 @@ export class VirtualDOM {
 		return realNode;
 	}
 
-	realizeVirtualDOMTree() {
+	realizeVirtualDOM() {
 		let currentVirtualNode = this.root!;
 		let currentRealNode: Node = this.realRoot!;
-		const rerender = () => this.rerender();
+		const updateVirtualDOM = () => this.updateVirtualDOM();
 
 		(function traverse(initIndex?: number) {
 			/**
@@ -322,12 +346,16 @@ export class VirtualDOM {
 							currentRealNode = VirtualDOM.compare(
 								virtualChild,
 								realChild,
-								rerender
+								updateVirtualDOM
 							);
 						} else {
 							const newElement = document.createElement(virtualChild.name!);
 
-							virtualChild.attachEventHandlersToDOM(newElement, rerender);
+							virtualChild.executeCleanups();
+							virtualChild.attachEventHandlersToDOM(
+								newElement,
+								updateVirtualDOM
+							);
 
 							Object.entries(
 								(virtualChild.content as ReactElement).props ?? {}
@@ -346,7 +374,7 @@ export class VirtualDOM {
 							currentRealNode = VirtualDOM.compare(
 								virtualChild,
 								realChild,
-								rerender
+								updateVirtualDOM
 							);
 						} else {
 							currentRealNode = currentRealNode.appendChild(
@@ -380,7 +408,7 @@ export class VirtualDOM {
 		})();
 	}
 
-	render(reactElement: ReactElement) {
+	initializeVirtualDOM(reactElement: ReactElement) {
 		if (!this.root) {
 			throw new Error(
 				"루트 노드가 존재해야 합니다. createRoot()를 호출하여 루트 노드를 생성하세요."
@@ -391,13 +419,18 @@ export class VirtualDOM {
 
 		this.root.appendChild(newTree);
 
-		this.realizeVirtualDOMTree();
+		this.realizeVirtualDOM();
+
+		if (newTree.isStale) {
+			rerender();
+			return;
+		}
 	}
 
 	/**
 	 * 현재 트리와 새로운 트리를 비교 후 실제 DOM 교체
 	 */
-	rerender() {
+	updateVirtualDOM() {
 		let currentNode = this.root!;
 
 		(function traverse(this: VirtualDOM) {
@@ -408,9 +441,11 @@ export class VirtualDOM {
 
 				// 컴포넌트의 상태가 업데이트 되었다면
 				if (
+					currentNode.isStale ||
 					prevStates?.some((prevState, i) => prevState !== currentStates[i])
 				) {
 					// 언마운트 될 현재 노드부터 하위로 순회하며 cleanups 호출
+					// todo: 자손 노드까지 재귀적으로 클린업 실행할 필요 없어 보임
 					currentNode.executeCleanups();
 
 					// 재실행하는 컴포넌트의 stateIndex에 맞도록 React 내부 stateIndex를 인위적으로 변경해야 함
@@ -428,18 +463,26 @@ export class VirtualDOM {
 					}
 
 					currentNode = newSubTree;
+
 					currentNode.states = currentStates;
 				}
 			}
 
+			if (currentNode.isStale) {
+				rerender();
+				return;
+			}
+
 			if (currentNode.children.length) {
 				currentNode.children.forEach((child) => {
+					if (currentNode.isStale) return;
+
 					currentNode = child;
 					traverse.call(this);
 				});
 			}
 		}).call(this);
 
-		this.realizeVirtualDOMTree();
+		this.realizeVirtualDOM();
 	}
 }
