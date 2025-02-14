@@ -48,13 +48,21 @@ export class SyntheticEvent {
 
 export type SyntheticEventHandler = (e?: SyntheticEvent) => void;
 
+export type VirtualNodeContent =
+	| HTMLElement
+	| ReactElement
+	| string
+	| boolean
+	| number
+	| object;
+
 export class VirtualNode {
 	type?: "root" | "htmlElement" | "component" | "primitive";
 	name?: Component["name"] | keyof HTMLElementTagNameMap;
 	props?: PropsWithoutChildren;
 	children: VirtualNode[];
 	parentNode?: VirtualNode;
-	content: HTMLElement | ReactElement | string;
+	content: VirtualNodeContent;
 	component?: Component;
 	states?: unknown[];
 	startStateIndex?: number;
@@ -71,8 +79,8 @@ export class VirtualNode {
 	endEffectIndex?: number;
 	effectCleanups: (CleanupFuntion | void)[];
 
-	constructor(node: HTMLElement | ReactElement | string) {
-		this.content = node;
+	constructor(content: VirtualNodeContent) {
+		this.content = content;
 		this.children = [];
 		this.eventHandlerCleanups = [];
 		this.isStale = false;
@@ -80,33 +88,32 @@ export class VirtualNode {
 		this.effectCleanups = [];
 
 		// 원시값이나 함수일 때
-		if (typeof node !== "object") {
+		if (typeof content !== "object") {
 			this.type = "primitive";
-			this.content = node;
 			return;
 		}
 
 		// 루트 노드를 생성할 때
-		if (node instanceof HTMLElement) {
+		if (content instanceof HTMLElement) {
 			this.type = "root";
-			this.name = node.localName;
+			this.name = content.localName;
 			return;
 		}
 
 		// type이 컴포넌트일 때
-		if (typeof node.type === "function") {
+		if (typeof (content as ReactElement).type === "function") {
 			this.type = "component";
-			this.name = node.type.name;
-			this.component = node.type;
-			this.props = node.props;
+			this.name = ((content as ReactElement).type as Function).name;
+			this.component = (content as ReactElement).type as Component;
+			this.props = (content as ReactElement).props;
 			return;
 		}
 
 		// type이 HTML tag name일 때
-		if (node.type in HTML_ELEMENT_TAG_NAMES) {
+		if (((content as ReactElement).type as string) in HTML_ELEMENT_TAG_NAMES) {
 			this.type = "htmlElement";
-			this.name = node.type;
-			this.props = node.props;
+			this.name = (content as ReactElement).type as string;
+			this.props = (content as ReactElement).props;
 		}
 	}
 
@@ -238,9 +245,16 @@ export class VirtualDOM {
 			}
 
 			if (currentNode.type === "htmlElement") {
-				(currentNode.content as ReactElement).children?.forEach((child) =>
-					currentNode.appendChild(new VirtualNode(child))
-				);
+				(currentNode.content as ReactElement).children?.forEach((child) => {
+					if (
+						typeof child === "boolean" ||
+						typeof child === "undefined" ||
+						Object.is(null, child)
+					)
+						return;
+
+					currentNode.appendChild(new VirtualNode(child));
+				});
 			}
 
 			if (currentNode.type === "component") {
