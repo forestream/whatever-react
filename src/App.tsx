@@ -1,7 +1,6 @@
 import { useState } from "@/react/jsx-runtime";
 import Horizontal from "./Horizontal";
 import "./App.css";
-import Counter from "./Counter";
 
 type Todo = {
 	content: string;
@@ -9,9 +8,7 @@ type Todo = {
 };
 
 export default function App() {
-	const [todos, setTodos] = useState<Todo[]>([
-		{ content: "example", done: false },
-	]);
+	const [todos, setTodos] = useState<Todo[]>([]);
 	const [todoText, setTodoText] = useState("");
 
 	const handleAddTodo = () => {
@@ -63,28 +60,31 @@ export default function App() {
 					</div>
 				</form>
 				<div className="todo-item__container">
-					{todos.map((todo, i) => (
-						<div className="todo-item">
-							<p className="todo-item__content">{todo.content}</p>
-							<div className="todo-item__checkbox-container">
-								<label
-									htmlFor="checkbox"
-									className={`todo-item__checkbox ${
-										todo.done ? "todo-item__checkbox--checked" : ""
-									}`}
-								>
-									<input
-										id="checkbox"
-										name={todo.content}
-										type="checkbox"
-										checked={todo.done}
-										onChange={(e: Event) => handleToggleDone(e, i)}
-									/>
-									{todo.done && <div className="todo-item__checkmark" />}
-								</label>
+					{todos.map((todo, i) => {
+						console.log(i);
+						return (
+							<div className="todo-item">
+								<p className="todo-item__content">{todo.content}</p>
+								<div className="todo-item__checkbox-container">
+									<label
+										htmlFor={i}
+										className={`todo-item__checkbox ${
+											todo.done ? "todo-item__checkbox--checked" : ""
+										}`}
+									>
+										<input
+											id={i}
+											name={todo.content}
+											type="checkbox"
+											checked={todo.done}
+											onChange={(e: Event) => handleToggleDone(e, i)}
+										/>
+										{todo.done && <div className="todo-item__checkmark" />}
+									</label>
+								</div>
 							</div>
-						</div>
-					))}
+						);
+					})}
 				</div>
 			</main>
 		</>
