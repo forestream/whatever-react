@@ -34,6 +34,9 @@ export type ReactElement = {
 	children?: Children;
 };
 
+export type ReactFragmentArray = Child[];
+export type ReactFragment = () => ReactFragmentArray;
+
 export class SyntheticEvent {
 	nativeEvent: Event;
 
@@ -51,14 +54,15 @@ export type SyntheticEventHandler = (e?: SyntheticEvent) => void;
 export type VirtualNodeContent =
 	| HTMLElement
 	| ReactElement
+	| ReactFragmentArray
 	| string
 	| boolean
 	| number
 	| object;
 
 export class VirtualNode {
-	type?: "root" | "htmlElement" | "component" | "primitive";
-	name?: Component["name"] | keyof HTMLElementTagNameMap;
+	type?: "root" | "htmlElement" | "component" | "primitive" | "fragment";
+	name?: Component["name"] | keyof HTMLElementTagNameMap | "Fragment";
 	props?: PropsWithoutChildren;
 	children: VirtualNode[];
 	parentNode?: VirtualNode;
@@ -90,6 +94,13 @@ export class VirtualNode {
 		// 원시값이나 함수일 때
 		if (typeof content !== "object") {
 			this.type = "primitive";
+			return;
+		}
+
+		// Fragment일 때
+		if (Array.isArray(content)) {
+			this.type = "fragment";
+			this.name = "Fragment";
 			return;
 		}
 
@@ -239,6 +250,19 @@ export class VirtualDOM {
 		(function traverse() {
 			if (currentNode.type === "primitive") {
 				// 노드값이 원시값일 때 동작 없음 = currentNode에 append할 children이 없음
+			}
+
+			if (currentNode.type === "fragment") {
+				(currentNode.content as ReactFragmentArray).forEach((child) => {
+					if (
+						typeof child === "boolean" ||
+						typeof child === "undefined" ||
+						Object.is(null, child)
+					)
+						return;
+
+					currentNode.appendChild(new VirtualNode(child));
+				});
 			}
 
 			if (currentNode.type === "htmlElement") {
@@ -403,6 +427,12 @@ export class VirtualDOM {
 						 */
 					}
 
+					if (virtualChild.type === "fragment") {
+						/**
+						 * 가상 노드 child가 프래그먼트라면 실제 DOM 노드는 생성하지 않는다.
+						 */
+					}
+
 					/**
 					 * todo: HTMLInputElement에 'input' 이벤트가 발생할 때마다
 					 * 리렌더링하면서 포커스를 잃어버리는 문제 해결 방안
@@ -458,7 +488,8 @@ export class VirtualDOM {
 
 					currentVirtualNode = virtualChild;
 					realChildNodeIndex =
-						currentVirtualNode.type === "component"
+						currentVirtualNode.type === "component" ||
+						currentVirtualNode.type === "fragment"
 							? traverse(realChildNodeIndex)
 							: realChildNodeIndex + traverse();
 
@@ -472,14 +503,21 @@ export class VirtualDOM {
 			}
 
 			// 가상노드의 자녀 노드 순회를 마쳤는데 실제 노드에 다음 자녀노드가 있다면 해당 노드들을 모두 제거한다.
-			if (currentVirtualNode.type !== "component") {
+			if (
+				currentVirtualNode.type !== "component" &&
+				currentVirtualNode.type !== "fragment"
+			) {
 				while (currentRealNode.childNodes.item(realChildNodeIndex)) {
 					currentRealNode.childNodes.item(realChildNodeIndex).remove();
 				}
 			}
 
 			// currentVirtualNode가 컴포넌트라면 currentRealNode는 부모 노드로 이동하지 않음
-			if (currentVirtualNode.type === "component") return realChildNodeIndex;
+			if (
+				currentVirtualNode.type === "component" ||
+				currentVirtualNode.type === "fragment"
+			)
+				return realChildNodeIndex;
 
 			currentRealNode = currentRealNode.parentNode ?? currentRealNode;
 

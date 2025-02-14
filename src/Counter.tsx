@@ -8,8 +8,6 @@ export default function Counter({
 	onClick?: () => void;
 	children?: Children;
 }) {
-	console.log("rendering Counter");
-
 	const [count, setCount] = useState(0);
 
 	const handleIncrease = () => {

@@ -1,5 +1,6 @@
 import {
 	Children,
+	PropsWithChildren,
 	PropsWithoutChildren,
 	ReactElement,
 	ReactElementType,
@@ -65,6 +66,10 @@ const React = (function () {
 			props,
 			children: children.length === 0 ? undefined : children.flat(Infinity),
 		};
+	}
+
+	function Fragment({ children }: PropsWithChildren) {
+		return children;
 	}
 
 	type Initializer<T> = T extends unknown ? T | ((prevState: T) => T) : never;
@@ -140,6 +145,7 @@ const React = (function () {
 		getEffectIndex,
 		setEffectIndex,
 		getEffects,
+		Fragment,
 	};
 })();
 
@@ -157,5 +163,6 @@ export const {
 	getEffectIndex,
 	setEffectIndex,
 	getEffects,
+	Fragment,
 } = React;
 export default React;

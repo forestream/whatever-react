@@ -12,7 +12,8 @@ export default defineConfig({
 		jsx: "transform",
 		jsxDev: false,
 		jsxImportSource: "@/react/jsx-runtime",
-		jsxInject: 'import { createElement } from "@/react/jsx-runtime"',
+		jsxInject: 'import { createElement, Fragment } from "@/react/jsx-runtime"',
 		jsxFactory: "createElement",
+		jsxFragment: "Fragment",
 	},
 });
