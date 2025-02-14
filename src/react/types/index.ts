@@ -226,10 +226,7 @@ export class VirtualDOM {
 	 * @param batchCleanups
 	 * @returns
 	 */
-	static generateVirtualDOMTree(
-		virtualNode: VirtualNode,
-		batchCleanups?: () => void
-	) {
+	static generateVirtualDOMTree(virtualNode: VirtualNode) {
 		const effects: [
 			EffectCallback,
 			DependencyList,
@@ -320,15 +317,7 @@ export class VirtualDOM {
 			});
 		})();
 
-		batchCleanups && batchCleanups();
-
-		while (effects.length) {
-			const effect = effects.shift();
-			if (!effect) continue;
-			typeof effect[0] === "function" && effect[0]();
-		}
-
-		return virtualNode;
+		return { node: virtualNode, effects };
 	}
 
 	/**
@@ -359,6 +348,10 @@ export class VirtualDOM {
 
 			Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
 				([key, value]) => {
+					if (key === "value") {
+						(newElement as Element).setAttribute("value", value as string);
+					}
+
 					if (hasSetter(newElement, key)) newElement[key] = value;
 				}
 			);
@@ -434,6 +427,13 @@ export class VirtualDOM {
 							).forEach(([key, value]) => {
 								if (key.startsWith("on")) return;
 
+								if (key === "value") {
+									(newElement as Element).setAttribute(
+										"value",
+										value as string
+									);
+								}
+
 								if (hasSetter(newElement, key)) newElement[key] = value;
 							});
 
@@ -460,8 +460,6 @@ export class VirtualDOM {
 						currentVirtualNode.type === "component"
 							? traverse(realChildNodeIndex)
 							: realChildNodeIndex + traverse();
-					if (currentRealNode.nodeName === "MAIN")
-						console.log(realChildNodeIndex);
 
 					/**
 					 * traverse 종료 후 부모 노드로 복귀
@@ -475,7 +473,6 @@ export class VirtualDOM {
 			// 가상노드의 자녀 노드 순회를 마쳤는데 실제 노드에 다음 자녀노드가 있다면 해당 노드들을 모두 제거한다.
 			if (currentVirtualNode.type !== "component") {
 				while (currentRealNode.childNodes.item(realChildNodeIndex)) {
-					console.log(currentRealNode.childNodes, realChildNodeIndex);
 					currentRealNode.childNodes.item(realChildNodeIndex).remove();
 				}
 			}
@@ -497,13 +494,19 @@ export class VirtualDOM {
 			);
 		}
 
-		const newTree = VirtualDOM.generateVirtualDOMTree(
+		const { node: newTree, effects } = VirtualDOM.generateVirtualDOMTree(
 			new VirtualNode(reactElement)
 		);
 
 		this.root.appendChild(newTree);
 
 		this.realizeVirtualDOM();
+
+		while (effects.length) {
+			const effect = effects.shift();
+			if (!effect) continue;
+			typeof effect[0] === "function" && effect[0]();
+		}
 
 		if (newTree.isStale) {
 			rerender();
@@ -516,6 +519,32 @@ export class VirtualDOM {
 	 */
 	updateVirtualDOM() {
 		let currentNode = this.root!;
+		let effects: [
+			EffectCallback,
+			DependencyList,
+			boolean,
+			void | CleanupFuntion
+		][] = [];
+		let updatedComponent: VirtualNode | null = null;
+
+		// 각 가상노드의 effectCleanups 배열도 순회하며 각 컴포넌트마다 useEffect 클린업 함수 실행 (리프노드부터)
+		const batchCleanups = (virtualNode: VirtualNode) => {
+			(function traverse(virtualNode) {
+				let currentNode = virtualNode;
+
+				if (currentNode.children) {
+					currentNode.children.forEach((child) => {
+						currentNode = child;
+						traverse(currentNode);
+					});
+				}
+
+				virtualNode.effects.forEach(
+					(effect) =>
+						effect[2] && typeof effect[3] === "function" && effect[3]()
+				);
+			})(virtualNode);
+		};
 
 		(function traverse(this: VirtualDOM) {
 			if (currentNode.type === "component") {
@@ -528,37 +557,22 @@ export class VirtualDOM {
 					currentNode.isStale ||
 					prevStates?.some((prevState, i) => prevState !== currentStates[i])
 				) {
+					updatedComponent = currentNode;
+
 					// 언마운트 될 현재 노드부터 하위로 순회하며 eventHandlerCleanups 호출
 					currentNode.callEventHandlerCleanups();
-
-					// 각 가상노드의 effectCleanups 배열도 순회하며 각 컴포넌트마다 useEffect 클린업 함수 실행 (리프노드부터)
-					const batchCleanups = () => {
-						(function traverse(virtualNode) {
-							let currentNode = virtualNode;
-
-							if (currentNode.children) {
-								currentNode.children.forEach((child) => {
-									currentNode = child;
-									traverse(currentNode);
-								});
-							}
-
-							virtualNode.effects.forEach(
-								(effect) =>
-									effect[2] && typeof effect[3] === "function" && effect[3]()
-							);
-						})(currentNode);
-					};
 
 					// 재실행하는 컴포넌트의 stateIndex에 맞도록 React 내부 stateIndex를 인위적으로 변경
 					setStateIndex(currentNode.startStateIndex!);
 					setEffectIndex(currentNode.startEffectIndex!);
 
 					// 새로운 VirtualNode 생성 후 기존 노드와 교체
-					const newSubTree = VirtualDOM.generateVirtualDOMTree(
-						new VirtualNode(currentNode.content),
-						batchCleanups
-					);
+					const { node: newSubTree, effects: afterRealizing } =
+						VirtualDOM.generateVirtualDOMTree(
+							new VirtualNode(currentNode.content)
+						);
+
+					effects = afterRealizing;
 
 					if (currentNode.parentNode) {
 						currentNode.parentNode.replaceChild(currentNode, newSubTree);
@@ -588,5 +602,13 @@ export class VirtualDOM {
 		}).call(this);
 
 		this.realizeVirtualDOM();
+
+		updatedComponent && batchCleanups(updatedComponent);
+
+		while (effects.length) {
+			const effect = effects.shift();
+			if (!effect) continue;
+			typeof effect[0] === "function" && effect[0]();
+		}
 	}
 }
