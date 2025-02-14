@@ -450,7 +450,6 @@ export class VirtualDOM {
 							);
 						} else {
 							currentRealNode = currentRealNode.appendChild(
-								// virtualChild.content 값은 'object'를 제외한 모든 값이 될 수 있습니다. 예외 처리 필요
 								document.createTextNode(virtualChild.content as string)
 							);
 						}
@@ -461,6 +460,8 @@ export class VirtualDOM {
 						currentVirtualNode.type === "component"
 							? traverse(realChildNodeIndex)
 							: realChildNodeIndex + traverse();
+					if (currentRealNode.nodeName === "MAIN")
+						console.log(realChildNodeIndex);
 
 					/**
 					 * traverse 종료 후 부모 노드로 복귀
@@ -469,6 +470,14 @@ export class VirtualDOM {
 					currentVirtualNode =
 						currentVirtualNode.parentNode ?? currentVirtualNode;
 				});
+			}
+
+			// 가상노드의 자녀 노드 순회를 마쳤는데 실제 노드에 다음 자녀노드가 있다면 해당 노드들을 모두 제거한다.
+			if (currentVirtualNode.type !== "component") {
+				while (currentRealNode.childNodes.item(realChildNodeIndex)) {
+					console.log(currentRealNode.childNodes, realChildNodeIndex);
+					currentRealNode.childNodes.item(realChildNodeIndex).remove();
+				}
 			}
 
 			// currentVirtualNode가 컴포넌트라면 currentRealNode는 부모 노드로 이동하지 않음
@@ -520,10 +529,9 @@ export class VirtualDOM {
 					prevStates?.some((prevState, i) => prevState !== currentStates[i])
 				) {
 					// 언마운트 될 현재 노드부터 하위로 순회하며 eventHandlerCleanups 호출
-					// todo: 자손 노드까지 재귀적으로 클린업 실행할 필요 없어 보임
 					currentNode.callEventHandlerCleanups();
 
-					// effectCleanups 배열도 순회하며 각 컴포넌트마다 useEffect 클린업 함수 실행 (리프노드부터)
+					// 각 가상노드의 effectCleanups 배열도 순회하며 각 컴포넌트마다 useEffect 클린업 함수 실행 (리프노드부터)
 					const batchCleanups = () => {
 						(function traverse(virtualNode) {
 							let currentNode = virtualNode;
