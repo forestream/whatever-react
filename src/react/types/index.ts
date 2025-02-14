@@ -348,8 +348,10 @@ export class VirtualDOM {
 
 			Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
 				([key, value]) => {
+					if (key.startsWith("on")) return;
+
 					if (key === "value") {
-						(newElement as Element).setAttribute("value", value as string);
+						(newElement as Element).setAttribute(key, value as string);
 					}
 
 					if (hasSetter(newElement, key)) newElement[key] = value;
@@ -367,8 +369,10 @@ export class VirtualDOM {
 
 		Object.entries((virtualNode.content as ReactElement).props ?? {}).forEach(
 			([key, value]) => {
+				if (key.startsWith("on")) return;
+
 				if (key === "value") {
-					(realNode as Element).setAttribute("value", value as string);
+					(realNode as Element).setAttribute(key, value as string);
 				}
 
 				if (hasSetter(realNode, key)) realNode[key] = value;
@@ -428,10 +432,7 @@ export class VirtualDOM {
 								if (key.startsWith("on")) return;
 
 								if (key === "value") {
-									(newElement as Element).setAttribute(
-										"value",
-										value as string
-									);
+									(newElement as Element).setAttribute(key, value as string);
 								}
 
 								if (hasSetter(newElement, key)) newElement[key] = value;
