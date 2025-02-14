@@ -1,5 +1,20 @@
+header {
+	padding: 1rem 2rem;
+}
+
+h1 {
+	color: var(--app-orange-90);
+}
+
+main {
+	max-width: 800px;
+	min-height: 100vh;
+	margin: 0 auto;
+}
+
 .todo-form {
 	padding: 8px 60px;
+	margin-bottom: 3rem;
 }
 
 .todo-form__input-container {
@@ -8,18 +23,22 @@
 }
 
 .todo-form__input {
-	padding: 0.5rem;
+	padding: 1rem;
 	font-size: 1rem;
 	width: 100%;
-	border: 1px solid var(--app-orange);
+	border: 1px solid var(--app-orange-60);
 	border-radius: 0.25rem;
 }
 
 .todo-form__button {
-	border: 1px solid var(--app-orange);
+	border: 1px solid var(--app-orange-60);
 	border-radius: 0.25rem;
 	padding: 0.5rem 1rem;
 	flex-shrink: 0;
+
+	&:hover {
+		background-color: var(--app-orange-10);
+	}
 }
 
 .horizontal {
@@ -43,12 +62,13 @@
 	margin-top: 8px;
 	display: flex;
 	width: 100%;
-	border: 1px solid var(--app-orange);
+	border: 1px solid var(--app-orange-60);
 	border-radius: 8px;
 }
 
 .todo-item__content {
 	flex-grow: 1;
+	align-self: center;
 }
 
 .todo-item__checkbox-container {
@@ -61,16 +81,20 @@
 
 .todo-item__checkbox {
 	cursor: pointer;
-	flex-shrink: 1;
-	border: 1px solid var(--app-orange);
-	height: 100%;
+	border: 1px solid var(--app-orange-60);
+	width: 1rem;
+	height: 1rem;
 	aspect-ratio: 1 / 1;
 	border-radius: 0.25rem;
 	position: relative;
+
+	&:hover {
+		border-width: 2px;
+	}
 }
 
 .todo-item__checkbox--checked {
-	background-color: var(--app-orange);
+	background-color: var(--app-orange-60);
 }
 
 .todo-item__checkmark {

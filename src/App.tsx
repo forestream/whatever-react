@@ -23,20 +23,21 @@ export default function App() {
 		setTodoText((e.target as HTMLInputElement).value);
 	};
 
-	const handleToggleDone = (e: Event, target: Todo) => {
-		setTodos((todos) =>
-			todos.map((todo) =>
-				todo === target
-					? { ...target, done: (e.target as HTMLInputElement).checked }
-					: todo
-			)
-		);
+	const handleToggleDone = (_e: Event, index: number) => {
+		console.log(index);
+		setTodos((todos) => [
+			...todos.slice(0, index),
+			{ ...todos[index], done: !todos[index].done },
+			...todos.slice(index + 1),
+		]);
 	};
 
 	return (
 		<>
-			<main className="main">
-				<Counter />
+			<header>
+				<h1>Whatever</h1>
+			</header>
+			<main>
 				<h1>할 일</h1>
 				<Horizontal className="horizontal" />
 				<form
@@ -62,7 +63,7 @@ export default function App() {
 					</div>
 				</form>
 				<div className="todo-item__container">
-					{todos.map((todo) => (
+					{todos.map((todo, i) => (
 						<div className="todo-item">
 							<p className="todo-item__content">{todo.content}</p>
 							<div className="todo-item__checkbox-container">
@@ -77,14 +78,9 @@ export default function App() {
 										name={todo.content}
 										type="checkbox"
 										checked={todo.done}
-										onChange={(e: Event) => handleToggleDone(e, todo)}
+										onChange={(e: Event) => handleToggleDone(e, i)}
 									/>
-									<>
-										{todo.done && <div className="todo-item__checkmark" />}
-										{todo.done && <div className="todo-item__checkmark" />}
-										{todo.done && <div className="todo-item__checkmark" />}
-										{todo.done && <div className="todo-item__checkmark" />}
-									</>
+									{todo.done && <div className="todo-item__checkmark" />}
 								</label>
 							</div>
 						</div>
