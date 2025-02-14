@@ -213,8 +213,14 @@ export class VirtualDOM {
 		return this;
 	}
 
+	/**
+	 * 전달받은 가상노드를 루트로 하는 트리를 생성해서 반환합니다.
+	 * @param virtualNode
+	 * @param batchCleanups
+	 * @returns
+	 */
 	static generateVirtualDOMTree(
-		reactElement: ReactElement,
+		virtualNode: VirtualNode,
 		batchCleanups?: () => void
 	) {
 		const effects: [
@@ -224,11 +230,7 @@ export class VirtualDOM {
 			CleanupFuntion | void
 		][] = [];
 
-		/**
-		 * 기존 트리를 변경하지 않도록 새로운 VirtualNode를 생성해서 반환합니다.
-		 */
-		const newTree = new VirtualNode(reactElement);
-		let currentNode = newTree;
+		let currentNode = virtualNode;
 
 		(function traverse() {
 			if (currentNode.type === "primitive") {
@@ -291,7 +293,7 @@ export class VirtualDOM {
 					 * forEach 내부 상단에 있어야 이미 실행 중인 forEach 콜백함수도 얼리 리턴 할 수 있음.
 					 */
 					if (currentNode.isStale) {
-						newTree.isStale = true;
+						virtualNode.isStale = true;
 						return;
 					}
 					currentNode = child;
@@ -305,9 +307,6 @@ export class VirtualDOM {
 		})();
 
 		batchCleanups && batchCleanups();
-		// effects.forEach((effect) => {
-		// 	effect[2] && typeof effect[3] === "function" && effect[3]();
-		// });
 
 		while (effects.length) {
 			const effect = effects.shift();
@@ -315,7 +314,7 @@ export class VirtualDOM {
 			typeof effect[0] === "function" && effect[0]();
 		}
 
-		return newTree;
+		return virtualNode;
 	}
 
 	/**
@@ -475,7 +474,9 @@ export class VirtualDOM {
 			);
 		}
 
-		const newTree = VirtualDOM.generateVirtualDOMTree(reactElement);
+		const newTree = VirtualDOM.generateVirtualDOMTree(
+			new VirtualNode(reactElement)
+		);
 
 		this.root.appendChild(newTree);
 
@@ -533,7 +534,7 @@ export class VirtualDOM {
 
 					// 새로운 VirtualNode 생성 후 기존 노드와 교체
 					const newSubTree = VirtualDOM.generateVirtualDOMTree(
-						currentNode.content as ReactElement,
+						new VirtualNode(currentNode.content),
 						batchCleanups
 					);
 
