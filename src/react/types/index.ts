@@ -18,11 +18,12 @@ import { hasSetter } from "@/utils/hasSetter";
 
 export type Child = string | ReactElement;
 export type Children = Child[];
-export type PropsWithoutChildren = Omit<
-	Record<string, unknown>,
-	"children"
-> | null;
-export type PropsWithChildren = PropsWithoutChildren & { children?: Children };
+export type PropsWithoutChildren<Props = {}> =
+	| (Omit<Record<string, unknown>, "children"> & Props)
+	| null;
+export type PropsWithChildren<Props = {}> = PropsWithoutChildren<Props> & {
+	children?: Children;
+};
 
 export type Component = (props: PropsWithChildren) => ReactElement;
 
@@ -37,11 +38,16 @@ export type ReactElement = {
 export type ReactFragmentArray = Child[];
 export type ReactFragment = () => ReactFragmentArray;
 
-export class SyntheticEvent {
-	nativeEvent: Event;
+export class SyntheticEvent<Target = unknown> {
+	preventDefault: () => void;
+	nativeEvent: (Event & { target: Target }) | Event;
+	target: Target extends EventTarget ? Target : null;
 
 	constructor(e: Event) {
-		for (let key in e) {
+		this.target = e.target as Target extends EventTarget ? Target : null;
+		this.preventDefault = () => {};
+
+		for (const key in e) {
 			this[key] = typeof e[key] === "function" ? e[key].bind(e) : e[key];
 		}
 
@@ -160,6 +166,8 @@ export class VirtualNode {
 	attachEventHandlersToDOM(target: Node, rerender: () => void) {
 		Object.entries(this.props ?? {}).forEach(([handlerName, handler]) => {
 			if (!handlerName.startsWith("on")) return;
+
+			if (!handler) return;
 
 			const lowercaseHandlerName = handlerName.toLowerCase();
 			const lowercaseEventName = lowercaseHandlerName.slice(2);
