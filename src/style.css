@@ -1,5 +1,8 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
 :root {
-	font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+	font-family: Pretendard, Inter, system-ui, Avenir, Helvetica, Arial,
+		sans-serif;
 	font-weight: 400;
 
 	color-scheme: light dark;
@@ -11,11 +14,24 @@
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 
-	--app-orange: rgb(255, 162, 40);
+	--app-orange-0: rgba(255, 255, 255, 1);
+	--app-orange-10: rgba(255, 248, 240, 1);
+	--app-orange-20: rgba(255, 241, 223, 1);
+	--app-orange-30: rgba(255, 232, 201, 1);
+	--app-orange-40: rgba(255, 219, 171, 1);
+	--app-orange-50: rgba(255, 202, 132, 1);
+	--app-orange-60: rgba(255, 182, 85, 1);
+	--app-orange-70: rgba(255, 162, 40, 1);
+	--app-orange-80: rgba(184, 105, 0, 1);
+	--app-orange-90: rgba(70, 40, 0, 1);
+	--app-orange-100: rgba(27, 15, 0, 1);
 }
 
 * {
 	box-sizing: border-box;
+}
+
+body {
 }
 
 a {
@@ -27,9 +43,14 @@ a:hover {
 	color: #535bf2;
 }
 
-main {
-	max-width: 800px;
-	margin: 0 auto;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+	margin: unset;
 }
 
 @media (prefers-color-scheme: light) {
@@ -47,10 +68,16 @@ main {
 
 button,
 input.checkbox {
+	font-family: inherit;
 	cursor: pointer;
+	transition: background-color 100ms;
 }
 
 button {
 	background-color: white;
 	border: 1px solid black;
+}
+
+input {
+	font-family: inherit;
 }

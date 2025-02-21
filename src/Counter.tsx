@@ -1,4 +1,4 @@
-import { useState } from "@/react/jsx-runtime";
+import { useEffect, useState } from "@/react/jsx-runtime";
 import { Children } from "./react/types";
 
 export default function Counter({
@@ -8,14 +8,25 @@ export default function Counter({
 	onClick?: () => void;
 	children?: Children;
 }) {
-	console.log("render Counter");
-
 	const [count, setCount] = useState(0);
 
 	const handleIncrease = () => {
+		console.log("increase");
 		setCount((count) => count + 1);
 		setCount((count) => count + 1);
 	};
+
+	useEffect(() => {
+		console.log("effect in Counter");
+
+		return () => console.log("cleanup in Counter");
+	}, []);
+
+	useEffect(() => {
+		console.log("second effect in Counter");
+
+		return () => console.log("second cleanup in Counter");
+	}, []);
 
 	return (
 		<div>
