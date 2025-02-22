@@ -6,7 +6,9 @@ interface InputFieldProps {
 	required?: boolean;
 	label?: string;
 	type?: "text";
+	initValue?: string;
 	placeholder?: string;
+	onChange?: (value: string | string[]) => void;
 }
 
 const InputField = ({
@@ -14,13 +16,16 @@ const InputField = ({
 	required = true,
 	label,
 	type = "text",
+	initValue = "",
 	placeholder = "",
+	onChange,
 }: InputFieldProps) => {
-	const [value, setValue] = useState("");
-	console.log(value);
+	const [value, setValue] = useState(initValue);
 
-	const handleChange = (e: SyntheticEvent<HTMLInputElement>) =>
+	const handleChange = (e: SyntheticEvent<HTMLInputElement>) => {
 		setValue(e.target.value);
+		if (onChange) onChange(e.target.value);
+	};
 
 	return (
 		<div className="input-field">

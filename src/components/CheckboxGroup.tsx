@@ -1,20 +1,31 @@
 import { useState } from "@/react/jsx-runtime";
+import { SyntheticEvent } from "@/react/types";
 
 interface CheckboxGroupProps {
+	initValue: string[];
 	question: string;
 	options: string[];
 	name?: string;
+	onChange?: (value: string | string[]) => void;
 }
 
-const CheckboxGroup = ({ name, question, options }: CheckboxGroupProps) => {
-	const [selected, setSelected] = useState<string[]>([]);
+const CheckboxGroup = ({
+	name,
+	initValue = [],
+	question,
+	options,
+	onChange,
+}: CheckboxGroupProps) => {
+	const [selected, setSelected] = useState<string[]>(initValue);
 
-	const handleCheckboxChange = (option) => {
-		if (selected.includes(option)) {
-			setSelected(selected.filter((item) => item !== option));
-		} else {
-			setSelected([...selected, option]);
-		}
+	const handleCheckboxChange = (option: string, e: SyntheticEvent) => {
+		const nextSelected = selected.includes(option)
+			? selected.filter((item) => item !== option)
+			: [...selected, option];
+
+		setSelected(nextSelected);
+
+		if (onChange) onChange(nextSelected);
 	};
 
 	return (
@@ -29,7 +40,7 @@ const CheckboxGroup = ({ name, question, options }: CheckboxGroupProps) => {
 							type="checkbox"
 							value={option}
 							checked={selected.includes(option)}
-							onChange={() => handleCheckboxChange(option)}
+							onChange={(e) => handleCheckboxChange(option, e)}
 						/>
 					</div>
 					<label htmlFor={option}>{option}</label>

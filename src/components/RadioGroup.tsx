@@ -1,15 +1,30 @@
 import { useState } from "@/react/jsx-runtime";
+import { SyntheticEvent } from "@/react/types";
 
 interface RadioGroupProps {
+	initValue: string;
 	question: string;
 	options: string[];
 	name?: string;
+	onChange?: (value: string | string[]) => void;
 }
 
-const RadioGroup = ({ name, question, options }: RadioGroupProps) => {
-	const [selected, setSelected] = useState("");
+const RadioGroup = ({
+	name,
+	initValue = "",
+	question,
+	options,
+	onChange,
+}: RadioGroupProps) => {
+	const [selected, setSelected] = useState(initValue);
 
-	const handleChange = (option: string) => setSelected(option);
+	const handleChange = (
+		option: string,
+		e: SyntheticEvent<HTMLInputElement>
+	) => {
+		setSelected(option);
+		if (onChange) onChange(e.target.value);
+	};
 
 	return (
 		<div className="radio-group">
@@ -23,7 +38,7 @@ const RadioGroup = ({ name, question, options }: RadioGroupProps) => {
 							type="radio"
 							value={option}
 							checked={selected === option}
-							onChange={() => handleChange(option)}
+							onChange={(e) => handleChange(option, e)}
 						/>
 					</div>
 					<label htmlFor={option}>{option}</label>

@@ -15,9 +15,12 @@ export type DependencyUpdated = boolean;
 const React = (function () {
 	const virtualDOM = new VirtualDOM();
 
-	const states: any[] = [];
+	let states: any[] = [];
 	let stateIndex = 0;
-	const getStates = () => states;
+	const getStates = () => [...states];
+	const setStates = (newStates: any[] | ((prevStates: any[]) => any[])) => {
+		states = typeof newStates === "function" ? newStates(states) : newStates;
+	};
 	const getStateIndex = () => stateIndex;
 	const setStateIndex = (nextStateIndex: number) =>
 		(stateIndex = nextStateIndex);
@@ -26,14 +29,19 @@ const React = (function () {
 	const getStateUpdated = () => stateUpdated;
 	const setStateUpdated = (value: boolean) => (stateUpdated = value);
 
-	const effects: [
+	let effects: [
 		EffectCallback,
 		DependencyList,
 		DependencyUpdated,
 		CleanupFuntion | void
 	][] = [];
 	let effectIndex = 0;
-	const getEffects = () => effects;
+	const getEffects = () => [...effects];
+	const setEffects = (newEffects: any[] | ((prevEffects: any[]) => any[])) => {
+		effects =
+			typeof newEffects === "function" ? newEffects(effects) : newEffects;
+	};
+
 	const getEffectIndex = () => effectIndex;
 	const setEffectIndex = (nextEffectIndex: number) =>
 		(effectIndex = nextEffectIndex);
@@ -139,12 +147,14 @@ const React = (function () {
 		getStateIndex,
 		setStateIndex,
 		getStates,
+		setStates,
 		getStateUpdated,
 		setStateUpdated,
 		rerender,
 		getEffectIndex,
 		setEffectIndex,
 		getEffects,
+		setEffects,
 		Fragment,
 	};
 })();
@@ -157,12 +167,14 @@ export const {
 	getStateIndex,
 	setStateIndex,
 	getStates,
+	setStates,
 	getStateUpdated,
 	setStateUpdated,
 	rerender,
 	getEffectIndex,
 	setEffectIndex,
 	getEffects,
+	setEffects,
 	Fragment,
 } = React;
 export default React;
