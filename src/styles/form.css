@@ -1,0 +1,36 @@
+.form__container {
+	padding-top: 2rem;
+	max-width: 770px;
+	margin: auto;
+	font-family: Arial, sans-serif;
+}
+
+.input-field,
+.radio-group,
+.checkbox-group {
+	margin-bottom: 20px;
+
+	& label {
+		display: inline-block;
+	}
+}
+
+input {
+	width: 100%;
+	padding: 8px;
+	margin-top: 5px;
+	box-sizing: border-box;
+}
+
+button:disabled {
+	background-color: #ddd;
+	cursor: not-allowed;
+}
+
+.checkbox-group__option,
+.radio-group__option {
+	display: flex;
+	gap: 0.5rem;
+	align-items: center;
+	margin-bottom: 0.5rem;
+}

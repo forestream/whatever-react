@@ -13,16 +13,19 @@ import {
 	CleanupFuntion,
 	DependencyUpdated,
 	setEffectIndex,
+	setStates,
+	setEffects,
 } from "@/react/jsx-runtime";
 import { hasSetter } from "@/utils/hasSetter";
 
 export type Child = string | ReactElement;
 export type Children = Child[];
-export type PropsWithoutChildren = Omit<
-	Record<string, unknown>,
-	"children"
-> | null;
-export type PropsWithChildren = PropsWithoutChildren & { children?: Children };
+export type PropsWithoutChildren<Props = {}> =
+	| (Omit<Record<string, unknown>, "children"> & Props)
+	| null;
+export type PropsWithChildren<Props = {}> = PropsWithoutChildren<Props> & {
+	children?: Children;
+};
 
 export type Component = (props: PropsWithChildren) => ReactElement;
 
@@ -37,11 +40,16 @@ export type ReactElement = {
 export type ReactFragmentArray = Child[];
 export type ReactFragment = () => ReactFragmentArray;
 
-export class SyntheticEvent {
-	nativeEvent: Event;
+export class SyntheticEvent<Target = unknown> {
+	preventDefault: () => void;
+	nativeEvent: (Event & { target: Target }) | Event;
+	target: Target extends EventTarget ? Target : null;
 
 	constructor(e: Event) {
-		for (let key in e) {
+		this.target = e.target as Target extends EventTarget ? Target : null;
+		this.preventDefault = () => {};
+
+		for (const key in e) {
 			this[key] = typeof e[key] === "function" ? e[key].bind(e) : e[key];
 		}
 
@@ -61,14 +69,17 @@ export type VirtualNodeContent =
 	| object;
 
 export class VirtualNode {
-	type?: "root" | "htmlElement" | "component" | "primitive" | "fragment";
-	name?: Component["name"] | keyof HTMLElementTagNameMap | "Fragment";
+	type?: "root" | "htmlElement" | "component" | "primitive" | "fragmentArray";
+	name?: Component["name"] | keyof HTMLElementTagNameMap | "FragmentArray";
 	props?: PropsWithoutChildren;
+	/**
+	 * @todo ReactElement.children 프로퍼티와 VirtualNode.children 프로퍼티의 타입은 다릅니다. 수정 필요
+	 */
 	children: VirtualNode[];
 	parentNode?: VirtualNode;
 	content: VirtualNodeContent;
 	component?: Component;
-	states?: unknown[];
+	states: unknown[];
 	startStateIndex?: number;
 	endStateIndex?: number;
 	eventHandlerCleanups: (() => void)[];
@@ -82,6 +93,8 @@ export class VirtualNode {
 	startEffectIndex?: number;
 	endEffectIndex?: number;
 	effectCleanups: (CleanupFuntion | void)[];
+	key?: string;
+	shouldRender: boolean;
 
 	constructor(content: VirtualNodeContent) {
 		this.content = content;
@@ -89,7 +102,9 @@ export class VirtualNode {
 		this.eventHandlerCleanups = [];
 		this.isStale = false;
 		this.effects = [];
+		this.states = [];
 		this.effectCleanups = [];
+		this.shouldRender = false;
 
 		// 원시값이나 함수일 때
 		if (typeof content !== "object") {
@@ -98,9 +113,13 @@ export class VirtualNode {
 		}
 
 		// Fragment일 때
+		/**
+		 * React.Fragment는 컴포넌트, React.Fragment가 반환하는 배열이 fragment 타입으로 만들어집니다.
+		 * @todo 위 사항 수정 필요
+		 */
 		if (Array.isArray(content)) {
-			this.type = "fragment";
-			this.name = "Fragment";
+			this.type = "fragmentArray";
+			this.name = "FragmentArray";
 			return;
 		}
 
@@ -113,6 +132,7 @@ export class VirtualNode {
 
 		// type이 컴포넌트일 때
 		if (typeof (content as ReactElement).type === "function") {
+			this.key = (content as ReactElement).props?.key as string;
 			this.type = "component";
 			this.name = ((content as ReactElement).type as Function).name;
 			this.component = (content as ReactElement).type as Component;
@@ -122,6 +142,7 @@ export class VirtualNode {
 
 		// type이 HTML tag name일 때
 		if (((content as ReactElement).type as string) in HTML_ELEMENT_TAG_NAMES) {
+			this.key = (content as ReactElement).props?.key as string;
 			this.type = "htmlElement";
 			this.name = (content as ReactElement).type as string;
 			this.props = (content as ReactElement).props;
@@ -156,10 +177,14 @@ export class VirtualNode {
 		return clone;
 	}
 
-	// todo: 이전과 같은 함수일 경우 생략할 필요가 있어 보임
+	/**
+	 * @todo 이전과 같은 핸들러일 경우 생략할 필요가 있어 보임
+	 */
 	attachEventHandlersToDOM(target: Node, rerender: () => void) {
 		Object.entries(this.props ?? {}).forEach(([handlerName, handler]) => {
 			if (!handlerName.startsWith("on")) return;
+
+			if (!handler) return;
 
 			const lowercaseHandlerName = handlerName.toLowerCase();
 			const lowercaseEventName = lowercaseHandlerName.slice(2);
@@ -214,6 +239,177 @@ export class VirtualNode {
 			typeof cleanup === "function" && cleanup();
 		}
 	}
+
+	// 각 가상노드의 effectCleanups 배열도 순회하며 각 컴포넌트마다 useEffect 클린업 함수 실행 (리프노드부터 후위 순회)
+	batchCleanups(this: VirtualNode) {
+		(function traverse(virtualNode) {
+			let currentNode = virtualNode;
+
+			if (currentNode.children) {
+				currentNode.children.forEach((child) => {
+					currentNode = child;
+					traverse(currentNode);
+				});
+			}
+
+			virtualNode.effects.forEach(
+				(effect) => effect[2] && typeof effect[3] === "function" && effect[3]()
+			);
+		})(this);
+	}
+
+	renderComponent() {
+		if (this.type !== "component") {
+			throw new Error(
+				"renderComponent 메서드는 컴포넌트 노드에서만 호출할 수 있습니다."
+			);
+		}
+
+		setStateUpdated(false);
+
+		/**
+		 * 함수 컴포넌트를 실행하기 전과 후 사이의 states, effects 훅 배열을 복사하여
+		 * virtualNode.states에 저장.
+		 */
+		const startStateIndex = getStateIndex();
+		const startEffectIndex = getEffectIndex();
+
+		/**
+		 * startStateIndex가 undefined일 때는 마운트 단계임을 의미합니다.
+		 * 현재 훅 인덱스에 새로운 상태가 삽입되도록 현재 인덱스 뒷 부분의 요소들을 잘라냈다가
+		 * 렌더링 후 다시 붙입니다.
+		 * @todo any 수정
+		 */
+		let effectsAfter: any[] = [];
+		let statesAfter: any[] = [];
+		if (this.startStateIndex === undefined) {
+			statesAfter = getStates().slice(startStateIndex);
+			effectsAfter = getEffects().slice(startEffectIndex);
+			setStates((prev) => prev.slice(0, startStateIndex));
+			setEffects((prev) => prev.slice(0, startEffectIndex));
+		} else {
+			setStates((prev) => [
+				...prev.slice(0, startStateIndex),
+				...this.states,
+				...prev.slice(startStateIndex + this.states.length),
+			]);
+
+			setEffects((prev) => [
+				...prev.slice(0, startEffectIndex),
+				...this.effects,
+				...prev.slice(startEffectIndex + this.effects.length),
+			]);
+		}
+
+		const { props, children } = this.content as ReactElement;
+
+		const nextChildren = new VirtualNode(
+			this.component!({ ...props, children })
+		);
+
+		if (getStateUpdated()) this.isStale = true;
+
+		const endStateIndex = getStateIndex();
+		const endEffectIndex = getEffectIndex();
+
+		this.startStateIndex = startStateIndex;
+		this.startEffectIndex = startEffectIndex;
+		this.endStateIndex = endStateIndex;
+		this.endEffectIndex = endEffectIndex;
+		this.states = getStates().slice(this.startStateIndex, this.endStateIndex);
+		this.effects = getEffects().slice(
+			this.startEffectIndex,
+			this.endEffectIndex
+		);
+
+		setStates((prev) => [...prev, ...statesAfter]);
+		setEffects((prev) => [...prev, ...effectsAfter]);
+
+		return nextChildren;
+	}
+
+	unmountComponent() {
+		this.parentNode = undefined;
+
+		const stateIndices: number[][] = [];
+		const effectIndices: number[][] = [];
+
+		(function traverse(currentNode: VirtualNode) {
+			if (currentNode.type === "component") {
+				const {
+					startEffectIndex,
+					endEffectIndex,
+					startStateIndex,
+					endStateIndex,
+				} = currentNode;
+
+				stateIndices.push([startStateIndex!, endStateIndex!]);
+				effectIndices.push([startEffectIndex!, endEffectIndex!]);
+			}
+
+			currentNode.children.forEach((child) => {
+				traverse(child);
+			});
+		})(this);
+
+		while (stateIndices.length) {
+			const [start, end] = stateIndices.pop() as number[];
+			setStates((prev) => [...prev.slice(0, start), ...prev.slice(end)]);
+		}
+
+		while (effectIndices.length) {
+			const [start, end] = effectIndices.pop() as number[];
+			setEffects((prev) => [...prev.slice(0, start), ...prev.slice(end)]);
+		}
+
+		this.callEventHandlerCleanups();
+		this.batchCleanups();
+	}
+
+	updateChildren(nextChildren: VirtualNode[]) {
+		const currentNode = this;
+		let currentChildren = currentNode.children;
+
+		nextChildren.forEach((nextChild) => {
+			let correspondingCurrentChild: VirtualNode | undefined;
+
+			currentChildren = currentChildren.filter((currentChild) => {
+				const isSame =
+					currentChild.name === nextChild.name &&
+					currentChild.key === nextChild.key;
+
+				if (isSame) correspondingCurrentChild = currentChild;
+
+				return !isSame;
+			});
+
+			if (correspondingCurrentChild) {
+				const {
+					states,
+					effects,
+					children,
+					startStateIndex,
+					endStateIndex,
+					startEffectIndex,
+					endEffectIndex,
+				} = correspondingCurrentChild;
+
+				nextChild.states = states;
+				nextChild.effects = effects;
+				nextChild.children = children;
+				nextChild.startStateIndex = startStateIndex;
+				nextChild.endStateIndex = endStateIndex;
+				nextChild.startEffectIndex = startEffectIndex;
+				nextChild.endEffectIndex = endEffectIndex;
+
+				correspondingCurrentChild.callEventHandlerCleanups();
+			}
+		});
+
+		currentChildren.forEach((child) => child.unmountComponent());
+
+		currentNode.children = nextChildren;
+	}
 }
 
 export class VirtualDOM {
@@ -252,7 +448,7 @@ export class VirtualDOM {
 				// 노드값이 원시값일 때 동작 없음 = currentNode에 append할 children이 없음
 			}
 
-			if (currentNode.type === "fragment") {
+			if (currentNode.type === "fragmentArray") {
 				(currentNode.content as ReactFragmentArray).forEach((child) => {
 					if (
 						typeof child === "boolean" ||
@@ -279,43 +475,9 @@ export class VirtualDOM {
 			}
 
 			if (currentNode.type === "component") {
-				const { props, children } = currentNode.content as ReactElement;
+				const childNode = currentNode.renderComponent();
 
-				/**
-				 * 함수 컴포넌트를 실행하기 전 stateIndex와 실행 후 stateIndex 사이의 배열을 복사하여
-				 * virtualNode.states에 저장.
-				 */
-				const stateIndexBefore = getStateIndex();
-				const effectIndexBefore = getEffectIndex();
-
-				setStateUpdated(false);
-
-				const newVirtualNode = new VirtualNode(
-					currentNode.component!({
-						...props,
-						children,
-					})
-				);
-
-				if (getStateUpdated()) currentNode.isStale = true;
-
-				const stateIndexAfter = getStateIndex();
-				const effectIndexAfter = getEffectIndex();
-
-				currentNode.startStateIndex = stateIndexBefore;
-				currentNode.endStateIndex = stateIndexAfter;
-				currentNode.states = getStates().slice(
-					stateIndexBefore,
-					stateIndexAfter
-				);
-				currentNode.startEffectIndex = effectIndexBefore;
-				currentNode.endEffectIndex = effectIndexAfter;
-				currentNode.effects = getEffects().slice(
-					effectIndexBefore,
-					effectIndexAfter
-				);
-
-				currentNode.appendChild(newVirtualNode);
+				currentNode.appendChild(childNode);
 			}
 
 			const currentNodeStoredForEffects = currentNode;
@@ -427,7 +589,7 @@ export class VirtualDOM {
 						 */
 					}
 
-					if (virtualChild.type === "fragment") {
+					if (virtualChild.type === "fragmentArray") {
 						/**
 						 * 가상 노드 child가 프래그먼트라면 실제 DOM 노드는 생성하지 않는다.
 						 */
@@ -489,7 +651,7 @@ export class VirtualDOM {
 					currentVirtualNode = virtualChild;
 					realChildNodeIndex =
 						currentVirtualNode.type === "component" ||
-						currentVirtualNode.type === "fragment"
+						currentVirtualNode.type === "fragmentArray"
 							? traverse(realChildNodeIndex)
 							: realChildNodeIndex + traverse();
 
@@ -505,7 +667,7 @@ export class VirtualDOM {
 			// 가상노드의 자녀 노드 순회를 마쳤는데 실제 노드에 다음 자녀노드가 있다면 해당 노드들을 모두 제거한다.
 			if (
 				currentVirtualNode.type !== "component" &&
-				currentVirtualNode.type !== "fragment"
+				currentVirtualNode.type !== "fragmentArray"
 			) {
 				while (currentRealNode.childNodes.item(realChildNodeIndex)) {
 					currentRealNode.childNodes.item(realChildNodeIndex).remove();
@@ -515,7 +677,7 @@ export class VirtualDOM {
 			// currentVirtualNode가 컴포넌트라면 currentRealNode는 부모 노드로 이동하지 않음
 			if (
 				currentVirtualNode.type === "component" ||
-				currentVirtualNode.type === "fragment"
+				currentVirtualNode.type === "fragmentArray"
 			)
 				return realChildNodeIndex;
 
@@ -557,6 +719,10 @@ export class VirtualDOM {
 	 * 현재 트리와 새로운 트리를 비교 후 실제 DOM 교체
 	 */
 	updateVirtualDOM() {
+		this.updateComponentStates();
+
+		setStateIndex(0);
+
 		let currentNode = this.root!;
 		let effects: [
 			EffectCallback,
@@ -566,63 +732,65 @@ export class VirtualDOM {
 		][] = [];
 		let updatedComponent: VirtualNode | null = null;
 
-		// 각 가상노드의 effectCleanups 배열도 순회하며 각 컴포넌트마다 useEffect 클린업 함수 실행 (리프노드부터)
-		const batchCleanups = (virtualNode: VirtualNode) => {
-			(function traverse(virtualNode) {
-				let currentNode = virtualNode;
-
-				if (currentNode.children) {
-					currentNode.children.forEach((child) => {
-						currentNode = child;
-						traverse(currentNode);
-					});
-				}
-
-				virtualNode.effects.forEach(
-					(effect) =>
-						effect[2] && typeof effect[3] === "function" && effect[3]()
-				);
-			})(virtualNode);
-		};
-
 		(function traverse(this: VirtualDOM) {
-			if (currentNode.type === "component") {
-				const prevStates = currentNode.states;
-				const { startStateIndex, endStateIndex } = currentNode;
-				const currentStates = getStates().slice(startStateIndex, endStateIndex);
+			if (currentNode.shouldRender) {
+				if (currentNode.type === "fragmentArray") {
+					const nextChildren: VirtualNode[] = [];
 
-				// 컴포넌트의 상태가 업데이트 되었다면
-				if (
-					currentNode.isStale ||
-					prevStates?.some((prevState, i) => prevState !== currentStates[i])
-				) {
-					updatedComponent = currentNode;
+					(currentNode.content as ReactFragmentArray).forEach((content) => {
+						const newNode = new VirtualNode(content);
+						if (
+							typeof newNode.content === "boolean" ||
+							typeof newNode.content === "undefined" ||
+							Object.is(null, newNode.content)
+						)
+							return;
 
-					// 언마운트 될 현재 노드부터 하위로 순회하며 eventHandlerCleanups 호출
-					currentNode.callEventHandlerCleanups();
+						newNode.shouldRender = true;
+						newNode.parentNode = currentNode;
+						nextChildren.push(newNode);
+					});
 
-					// 재실행하는 컴포넌트의 stateIndex에 맞도록 React 내부 stateIndex를 인위적으로 변경
-					setStateIndex(currentNode.startStateIndex!);
-					setEffectIndex(currentNode.startEffectIndex!);
-
-					// 새로운 VirtualNode 생성 후 기존 노드와 교체
-					const { node: newSubTree, effects: afterRealizing } =
-						VirtualDOM.generateVirtualDOMTree(
-							new VirtualNode(currentNode.content)
-						);
-
-					effects = afterRealizing;
-
-					if (currentNode.parentNode) {
-						currentNode.parentNode.replaceChild(currentNode, newSubTree);
-					} else {
-						this.root = newSubTree;
-					}
-
-					currentNode = newSubTree;
-
-					currentNode.states = currentStates;
+					currentNode.updateChildren(nextChildren);
 				}
+
+				if (currentNode.type === "htmlElement") {
+					const nextChildren: VirtualNode[] = [];
+
+					(currentNode.content as ReactElement).children?.forEach((child) => {
+						const newNode = new VirtualNode(child);
+						if (
+							typeof newNode.content === "boolean" ||
+							typeof newNode.content === "undefined" ||
+							Object.is(null, newNode.content)
+						)
+							return;
+
+						newNode.shouldRender = true;
+						newNode.parentNode = currentNode;
+						nextChildren.push(newNode);
+					});
+
+					currentNode.updateChildren(nextChildren);
+				}
+
+				if (currentNode.type === "component") {
+					const nextChildren: VirtualNode[] = [];
+
+					const newNode = currentNode.renderComponent();
+					newNode.shouldRender = true;
+					newNode.parentNode = currentNode;
+					nextChildren.push(newNode);
+
+					currentNode.updateChildren(nextChildren);
+				}
+
+				currentNode.shouldRender = false;
+			}
+
+			if (currentNode.type === "component") {
+				setStateIndex(currentNode.endStateIndex!);
+				setEffectIndex(currentNode.endEffectIndex!);
 			}
 
 			if (currentNode.isStale) {
@@ -642,12 +810,35 @@ export class VirtualDOM {
 
 		this.realizeVirtualDOM();
 
-		updatedComponent && batchCleanups(updatedComponent);
+		updatedComponent && (updatedComponent as VirtualNode).batchCleanups();
 
 		while (effects.length) {
 			const effect = effects.shift();
 			if (!effect) continue;
 			typeof effect[0] === "function" && effect[0]();
 		}
+	}
+
+	updateComponentStates() {
+		(function traverse(currentNode: VirtualNode) {
+			if (currentNode.type === "component") {
+				const prevStates = currentNode.states;
+				const { startStateIndex, endStateIndex } = currentNode;
+				const currentStates = getStates().slice(startStateIndex, endStateIndex);
+				currentNode.states = currentStates;
+
+				// 컴포넌트의 상태가 업데이트 되었다면
+				if (
+					currentNode.isStale ||
+					prevStates?.some((prevState, i) => prevState !== currentStates[i])
+				) {
+					currentNode.shouldRender = true;
+				}
+			}
+
+			currentNode.children.forEach((child) => {
+				traverse(child);
+			});
+		})(this.root!);
 	}
 }

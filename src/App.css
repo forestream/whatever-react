@@ -113,3 +113,31 @@ main {
 	width: 0;
 	height: 0;
 }
+
+footer {
+	height: 4rem;
+}
+
+.form__container button {
+	border: none;
+	border-radius: 0.375rem;
+	cursor: pointer;
+}
+
+.form__button-container {
+	display: flex;
+}
+
+.form__button {
+	background-color: white;
+	color: var(--app-purple);
+	padding: 1rem 2rem;
+	margin-right: 0.5rem;
+}
+
+.form__submit-button {
+	margin-right: 0.5rem;
+	padding: 1rem 2rem;
+	background-color: var(--app-purple);
+	color: white;
+}
